@@ -53,7 +53,7 @@ namespace NLog.UnitTests.LayoutRenderers
         [Fact]
         public void AssemblyNameVersionTest()
         {
-            AssertLayoutRendererOutput("${assembly-version:SampleExtensions}", "5.0.0.0");
+            AssertLayoutRendererOutput("${assembly-version:NLogAutoLoadExtension}", "2.0.0.0");
         }
     }
 }

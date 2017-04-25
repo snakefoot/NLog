@@ -220,6 +220,7 @@ namespace NLog.LayoutRenderers
                     {
                         AppendMethodName(builder, callerMemberName.ToString());
                     }
+#if !SILVERLIGHT
                     object callerFilePath;
                     if (this.FileName && logEvent.Properties.TryGetValue("CallerFilePath", out callerFilePath))
                     {
@@ -231,7 +232,9 @@ namespace NLog.LayoutRenderers
                         }
 
                         AppendFileName(builder, callerFilePath.ToString(), lineNumber);
+
                     }
+#endif
                 }
             }
         }
@@ -254,15 +257,17 @@ namespace NLog.LayoutRenderers
 
             builder.Append(methodName);
         }
-
+#if !SILVERLIGHT
         void AppendFileName(StringBuilder builder, string fileName, int lineNumber)
         {
             builder.Append("(");
+
             if (this.IncludeSourcePath)
             {
                 builder.Append(fileName);
             }
             else
+
             {
                 builder.Append(Path.GetFileName(fileName));
             }
@@ -271,5 +276,6 @@ namespace NLog.LayoutRenderers
             builder.AppendInvariant(lineNumber);
             builder.Append(")");
         }
+#endif
     }
 }
