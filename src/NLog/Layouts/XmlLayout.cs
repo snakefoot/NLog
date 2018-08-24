@@ -253,11 +253,11 @@ namespace NLog.Layouts
         /// <param name="target"><see cref="StringBuilder"/> for the result</param>
         protected override void RenderFormattedMessage(LogEventInfo logEvent, StringBuilder target)
         {
-            int orgLength = target.Length;
-            RenderXmlFormattedMessage(logEvent, target);
-            if (target.Length == orgLength && IncludeEmptyValue && !string.IsNullOrEmpty(ElementName))
+            var builder = new XmlBuilder(target);
+            RenderXmlFormattedMessage(logEvent, builder);
+            if (!builder.ContentWritten() && IncludeEmptyValue && !string.IsNullOrEmpty(ElementName))
             {
-                RenderSelfClosingElement(target, ElementName);
+                builder.RenderSelfClosingElement(ElementName);
             }
         }
 
@@ -272,24 +272,22 @@ namespace NLog.Layouts
             return RenderAllocateBuilder(logEvent);
         }
 
-        private void RenderXmlFormattedMessage(LogEventInfo logEvent, StringBuilder sb)
+        private void RenderXmlFormattedMessage(LogEventInfo logEvent, XmlBuilder builder)
         {
-            int orgLength = sb.Length;
-
             // Attributes without element-names should be added to the top XML element
             if (!string.IsNullOrEmpty(ElementName))
             {
                 for (int i = 0; i < Attributes.Count; i++)
                 {
                     var attribute = Attributes[i];
-                    int beforeAttributeLength = sb.Length;
-                    if (!RenderAppendXmlAttributeValue(attribute, logEvent, sb, sb.Length == orgLength))
+                    int beforeAttributeLength = builder.Length;
+                    if (!RenderAppendXmlAttributeValue(attribute, logEvent, builder))
                     {
-                        sb.Length = beforeAttributeLength;
+                        builder.Length = beforeAttributeLength;
                     }
                 }
 
-                if (sb.Length != orgLength)
+                if (!builder.ContentWritten())
                 {
                     bool hasElements =
                         ElementValue != null ||
@@ -301,29 +299,29 @@ namespace NLog.Layouts
                         (IncludeAllProperties && logEvent.HasProperties);
                     if (!hasElements)
                     {
-                        sb.Append("/>");
+                        builder.Append("/>");
                         return;
                     }
                     else
                     {
-                        sb.Append('>');
+                        builder.Append('>');
                         if (IndentXml)
-                            sb.AppendLine();
+                            builder.AppendLine();
                     }
                 }
 
                 if (ElementValue != null)
                 {
-                    int beforeElementLength = sb.Length;
-                    if (sb.Length == orgLength)
+                    int beforeElementLength = builder.Length;
+                    if (!builder.ContentWritten())
                     {
-                        BeginXmlDocument(sb, ElementName);
+                        BeginXmlDocument(builder, ElementName);
                     }
-                    int beforeValueLength = sb.Length;
-                    ElementValue.RenderAppendBuilder(logEvent, sb);
-                    if (beforeValueLength == sb.Length && !IncludeEmptyValue)
+                    int beforeValueLength = builder.Length;
+                    ElementValue.RenderAppendBuilder(logEvent, builder.BackEnd);
+                    if (beforeValueLength == builder.Length && !IncludeEmptyValue)
                     {
-                        sb.Length = beforeElementLength;
+                        builder.Length = beforeElementLength;
                     }
                 }
             }
@@ -333,10 +331,10 @@ namespace NLog.Layouts
             for (int i = 0; i < Elements.Count; i++)
             {
                 var element = Elements[i];
-                int beforeAttributeLength = sb.Length;
-                if (!RenderAppendXmlElementValue(element, logEvent, sb, sb.Length == orgLength))
+                int beforeAttributeLength = builder.Length;
+                if (!RenderAppendXmlElementValue(element, logEvent, builder))
                 {
-                    sb.Length = beforeAttributeLength;
+                    builder.Length = beforeAttributeLength;
                 }
             }
 
@@ -344,12 +342,12 @@ namespace NLog.Layouts
 
             foreach (var prop in props)
             {
-                AppendXmlPropertyValue(prop.Key, prop.Value, sb, sb.Length == orgLength);
+                AppendXmlPropertyValue(prop.Key, prop.Value, builder);
             }
 
-            if (sb.Length > orgLength && !string.IsNullOrEmpty(ElementName))
+            if (builder.ContentWritten() && !string.IsNullOrEmpty(ElementName))
             {
-                EndXmlDocument(sb, ElementName);
+                EndXmlDocument(builder, ElementName);
             }
         }
 
@@ -397,8 +395,10 @@ namespace NLog.Layouts
             }
         }
 
-        private void AppendXmlPropertyValue(string propName, object propertyValue, StringBuilder sb, bool beginXmlDocument)
+        private void AppendXmlPropertyValue(string propName, object propertyValue, XmlBuilder builder)
         {
+            bool beginXmlDocument = !builder.ContentWritten();
+
             if (string.IsNullOrEmpty(PropertiesElementName))
                 return; // Not supported
 
@@ -408,127 +408,108 @@ namespace NLog.Layouts
 
             if (beginXmlDocument && !string.IsNullOrEmpty(ElementName))
             {
-                BeginXmlDocument(sb, ElementName);
+                BeginXmlDocument(builder, ElementName);
             }
 
             if (IndentXml && !string.IsNullOrEmpty(ElementName))
-                sb.Append("  ");
+                builder.Append("  ");
 
-            sb.Append('<');
+            builder.Append('<');
             string propNameElement = null;
             if (_propertiesElementNameHasFormat)
             {
                 propNameElement = XmlHelper.XmlConvertToStringSafe(propName);
-                sb.AppendFormat(PropertiesElementName, propNameElement);
+                builder.AppendFormat(PropertiesElementName, propNameElement);
             }
             else
             {
-                sb.Append(PropertiesElementName);
+                builder.Append(PropertiesElementName);
             }
 
-            RenderAttribute(sb, PropertiesElementKeyAttribute, propName);
+            builder.RenderAttribute(PropertiesElementKeyAttribute, propName);
 
             string xmlValueString = XmlHelper.XmlConvertToStringSafe(propertyValue);
 
-            if (RenderAttribute(sb, PropertiesElementValueAttribute, xmlValueString))
+            if (builder.RenderAttribute(PropertiesElementValueAttribute, xmlValueString))
             {
-                sb.Append("/>");
+                builder.Append("/>");
             }
             else
             {
-                sb.Append('>');
-                XmlHelper.EscapeXmlString(xmlValueString, false, sb);
-                sb.Append("</");
+                builder.Append('>');
+                XmlHelper.EscapeXmlString(xmlValueString, false, builder.BackEnd);
+                builder.Append("</");
                 var value = _propertiesElementNameHasFormat ? propNameElement : PropertiesElementName;
-                sb.AppendFormat(PropertiesElementName, value);
-                sb.Append('>');
+                builder.AppendFormat(PropertiesElementName, value);
+                builder.Append('>');
             }
             if (IndentXml)
-                sb.AppendLine();
+                builder.AppendLine();
         }
 
-        /// <summary>
-        /// write attribute, only if <paramref name="attributeName"/> is not empty
-        /// </summary>
-        /// <param name="sb"></param>
-        /// <param name="attributeName"></param>
-        /// <param name="value"></param>
-        /// <returns>rendered</returns>
-        private static bool RenderAttribute(StringBuilder sb, string attributeName, string value)
+        private bool RenderAppendXmlElementValue(XmlLayout xmlElement, LogEventInfo logEvent, XmlBuilder builder)
         {
-            if (!string.IsNullOrEmpty(attributeName))
-            {
-                sb.Append(' ');
-                sb.Append(attributeName);
-                sb.Append("=\"");
-                XmlHelper.EscapeXmlString(value, true, sb);
-                sb.Append('\"');
-                return true;
-            }
+            bool beginXmlDocument = !builder.ContentWritten();
 
-            return false;
-        }
-
-        private bool RenderAppendXmlElementValue(XmlLayout xmlElement, LogEventInfo logEvent, StringBuilder sb, bool beginXmlDocument)
-        {
             string xmlElementName = xmlElement.ElementName;
             if (string.IsNullOrEmpty(xmlElementName))
                 return false;
 
             if (beginXmlDocument && !string.IsNullOrEmpty(ElementName))
             {
-                BeginXmlDocument(sb, ElementName);
+                BeginXmlDocument(builder, ElementName);
             }
 
             if (IndentXml && !string.IsNullOrEmpty(ElementName))
-                sb.Append("  ");
+                builder.Append("  ");
 
-            int beforeValueLength = sb.Length;
-            xmlElement.RenderAppendBuilder(logEvent, sb);
-            if (sb.Length == beforeValueLength && !xmlElement.IncludeEmptyValue)
+            int beforeValueLength = builder.Length;
+            xmlElement.RenderAppendBuilder(logEvent, builder.BackEnd);
+            if (builder.Length == beforeValueLength && !xmlElement.IncludeEmptyValue)
                 return false;
 
             if (IndentXml)
-                sb.AppendLine();
+                builder.AppendLine();
             return true;
         }
 
-        private bool RenderAppendXmlAttributeValue(XmlAttribute attributes, LogEventInfo logEvent, StringBuilder sb, bool beginXmlDocument)
+        private bool RenderAppendXmlAttributeValue(XmlAttribute attributes, LogEventInfo logEvent, XmlBuilder builder)
         {
             string xmlKeyString = attributes.Name;
             if (string.IsNullOrEmpty(xmlKeyString))
                 return false;
 
+            var beginXmlDocument = !builder.ContentWritten();
             if (beginXmlDocument)
             {
-                sb.Append('<');
-                sb.Append(ElementName);
+                builder.Append('<');
+                builder.Append(ElementName);
             }
 
-            sb.Append(' ');
-            sb.Append(xmlKeyString);
-            sb.Append("=\"");
+            builder.Append(' ');
+            builder.Append(xmlKeyString);
+            builder.Append("=\"");
 
-            int beforeValueLength = sb.Length;
-            attributes.LayoutWrapper.RenderAppendBuilder(logEvent, sb);
-            if (sb.Length == beforeValueLength && !attributes.IncludeEmptyValue)
+            int beforeValueLength = builder.Length;
+            attributes.LayoutWrapper.RenderAppendBuilder(logEvent, builder.BackEnd);
+            if (builder.Length == beforeValueLength && !attributes.IncludeEmptyValue)
                 return false;
 
-            sb.Append('\"');
+            builder.Append('\"');
             return true;
         }
 
-        private void BeginXmlDocument(StringBuilder sb, string elementName)
+        private void BeginXmlDocument(XmlBuilder builder, string elementName)
         {
-            RenderStartElement(sb, elementName);
+            builder.RenderStartElement(elementName);
             if (IndentXml)
-                sb.AppendLine();
+                builder.AppendLine();
         }
 
 
-        private void EndXmlDocument(StringBuilder sb, string elementName)
+        private void EndXmlDocument(XmlBuilder builder, string elementName)
         {
-            RenderEndElement(sb, elementName);
+            builder.RenderEndElement(elementName);
         }
 
         /// <summary>
@@ -545,28 +526,6 @@ namespace NLog.Layouts
                 return ToStringWithNestedItems(new[] { this }, n => "Element:" + n.ElementName);
             else
                 return GetType().Name;
-        }
-
-
-        private static void RenderSelfClosingElement(StringBuilder target, string elementName)
-        {
-            target.Append('<');
-            target.Append(elementName);
-            target.Append("/>");
-        }
-
-        private static void RenderStartElement(StringBuilder sb, string elementName)
-        {
-            sb.Append('<');
-            sb.Append(elementName);
-            sb.Append('>');
-        }
-
-        private static void RenderEndElement(StringBuilder sb, string elementName)
-        {
-            sb.Append("</");
-            sb.Append(elementName);
-            sb.Append('>');
         }
     }
 }
