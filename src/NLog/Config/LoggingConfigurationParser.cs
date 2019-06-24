@@ -1278,6 +1278,9 @@ namespace NLog.Config
             return string.IsNullOrEmpty(target.Name) ? target.GetType().Name : target.Name;
         }
 
+        /// <summary>
+        /// Config element that's validated and having extra context
+        /// </summary>
         private class ValidatedConfigurationElement : ILoggingConfigurationElement
         {
             private static readonly IDictionary<string, string> EmptyDefaultDictionary = new SortHelpers.ReadOnlySingleBucketDictionary<string, string>();
