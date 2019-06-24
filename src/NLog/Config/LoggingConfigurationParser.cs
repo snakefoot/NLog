@@ -1370,9 +1370,8 @@ namespace NLog.Config
                     }
                     else
                     {
-                        string validationError = string.IsNullOrEmpty(attributeKey) ?
-                            string.Format("Invalid property for '{0}' without name. Value={1}", element.Name, attribute.Value) :
-                            string.Format("Duplicate value for '{0}'. PropertyName={1}. Skips Value={2}. Existing Value={3}", element.Name, attributeKey, attribute.Value, valueLookup[attributeKey]);
+                        string validationError = string.IsNullOrEmpty(attributeKey) ? $"Invalid property for '{element.Name}' without name. Value={attribute.Value}"
+                            : $"Duplicate value for '{element.Name}'. PropertyName={attributeKey}. Skips Value={attribute.Value}. Existing Value={valueLookup[attributeKey]}";
                         InternalLogger.Debug("Skipping {0}", validationError);
                         if (throwConfigExceptions)
                         {
