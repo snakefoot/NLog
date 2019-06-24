@@ -1388,7 +1388,7 @@ namespace NLog.Config
         }
     }
 
-    internal static class ILoggingConfigurationSectionExtensions
+    internal static class LoggingConfigurationSectionExtensions
     {
         public static bool MatchesName(this ILoggingConfigurationElement section, string expectedName)
         {
