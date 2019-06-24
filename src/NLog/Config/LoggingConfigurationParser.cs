@@ -1331,7 +1331,7 @@ namespace NLog.Config
 
             public IEnumerable<KeyValuePair<string, string>> Values => ValueLookup;
 
-            IEnumerable<ILoggingConfigurationElement> ILoggingConfigurationElement.Children => ValidChildren.Cast<ILoggingConfigurationElement>();
+            IEnumerable<ILoggingConfigurationElement> ILoggingConfigurationElement.Children => ValidChildren;
 
             public string GetRequiredValue(string attributeName, string section)
             {
