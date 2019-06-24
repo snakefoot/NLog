@@ -1359,7 +1359,7 @@ namespace NLog.Config
             private static IDictionary<string, string> CreateValueLookup(ILoggingConfigurationElement element, bool throwConfigExceptions)
             {
                 IDictionary<string, string> valueLookup = null;
-                System.Text.StringBuilder warnings = null;
+                var warnings = new List<string>();
                 foreach (var attribute in element.Values)
                 {
                     var attributeKey = attribute.Key?.Trim() ?? string.Empty;
@@ -1376,17 +1376,13 @@ namespace NLog.Config
                         InternalLogger.Debug("Skipping {0}", validationError);
                         if (throwConfigExceptions)
                         {
-                            if (warnings != null)
-                                warnings.AppendLine();
-                            else
-                                warnings = new System.Text.StringBuilder();
-                            warnings.Append(validationError);
+                            warnings.Add(validationError);
                         }
                     }
                 }
-                if (throwConfigExceptions && warnings != null)
+                if (throwConfigExceptions && warnings.Any())
                 {
-                    throw new NLogConfigurationException(warnings.ToString());
+                    throw new NLogConfigurationException(StringHelpers.Join(Environment.NewLine, warnings));
                 }
                 return valueLookup ?? EmptyDefaultDictionary;
             }
