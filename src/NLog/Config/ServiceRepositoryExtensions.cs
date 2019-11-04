@@ -31,6 +31,8 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
+using NLog.Targets;
+
 namespace NLog.Config
 {
     using NLog.Internal;
@@ -89,6 +91,14 @@ namespace NLog.Config
         public static IServiceRepository RegisterJsonConverter(this IServiceRepository serviceRepository, IJsonConverter jsonConverter)
         {
             serviceRepository.RegisterSingleton(jsonConverter ?? Targets.DefaultJsonSerializer.Instance);
+            return serviceRepository;
+        } 
+        
+        public static IServiceRepository RegisterDefaults(this IServiceRepository serviceRepository)
+        {
+            serviceRepository.RegisterSingleton<IJsonConverter>(DefaultJsonSerializer.Instance);
+            serviceRepository.RegisterSingleton<IValueFormatter>(new MessageTemplates.ValueFormatter(serviceRepository));
+            serviceRepository.RegisterSingleton<IPropertyTypeConverter>(PropertyTypeConverter.Instance);
             return serviceRepository;
         }
     }

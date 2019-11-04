@@ -61,9 +61,7 @@ namespace NLog.Config
             if (resetGlobalCache)
                 ConfigurationItemFactory.Default = null;    //build new global factory
 
-            this.RegisterSingleton<IJsonConverter>(DefaultJsonSerializer.Instance);
-            this.RegisterSingleton<IValueFormatter>(new MessageTemplates.ValueFormatter(this));
-            this.RegisterSingleton<IPropertyTypeConverter>(PropertyTypeConverter.Instance);
+            this.RegisterDefaults();
             CreateInstance = DefaultResolveInstance;
             // Maybe also include active TimeSource ? Could also be done with LogFactory extension-methods
         }
