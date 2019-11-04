@@ -101,10 +101,8 @@ namespace NLog.Config
             {
                 return createInstance(itemType);
             }
-            else
-            {
-                return DefaultResolveInstance(itemType);
-            }
+
+            return DefaultResolveInstance(itemType);
         }
 
         private object DefaultResolveInstance(Type itemType)
