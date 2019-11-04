@@ -81,6 +81,11 @@ namespace NLog.Config
             _serviceRepository[interfaceType] = t => singletonObject;
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="type"></param>
+        /// <param name="objectResolver"><c>null</c> will unregister the type</param>
         public void RegisterType(Type type, ConfigurationItemCreator objectResolver)
         {
             if (objectResolver == null)
