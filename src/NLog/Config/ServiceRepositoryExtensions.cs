@@ -62,6 +62,15 @@ namespace NLog.Config
             return serviceResolver?.ResolveService<IValueFormatter>() ?? MessageTemplates.ValueFormatter.Instance;
         }
 
+        /// <summary>
+        /// Registers singleton-object as implementation of specific interface.
+        /// </summary>
+        /// <remarks>
+        /// If the same single-object implements multiple interfaces then it must be registered for each interface
+        /// </remarks>
+        /// <typeparam name="T">Type of interface</typeparam>
+        /// <param name="serviceRepository">The repo</param>
+        /// <param name="singleton">Singleton object to use for override</param>
         public static IServiceRepository RegisterSingleton<T>(this IServiceRepository serviceRepository, T singleton) where T : class
         {
             serviceRepository.RegisterType(typeof(IValueFormatter), (t) => singleton);

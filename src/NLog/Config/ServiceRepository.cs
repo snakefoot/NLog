@@ -69,19 +69,6 @@ namespace NLog.Config
         }
 
         /// <summary>
-        /// Registers singleton-object as implementation of specific interface.
-        /// </summary>
-        /// <remarks>
-        /// If the same single-object implements multiple interfaces then it must be registered for each interface
-        /// </remarks>
-        /// <param name="interfaceType">Type of interface</param>
-        /// <param name="singletonObject">Singleton object to use for override</param>
-        internal void RegisterSingleton(Type interfaceType, object singletonObject)
-        {
-            _serviceRepository[interfaceType] = t => singletonObject;
-        }
-
-        /// <summary>
         /// 
         /// </summary>
         /// <param name="type"></param>
