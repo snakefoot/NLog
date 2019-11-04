@@ -64,7 +64,7 @@ namespace NLog.Config
             RegisterSingleton(typeof(IJsonConverter), DefaultJsonSerializer.Instance);
             RegisterSingleton(typeof(IValueFormatter), new MessageTemplates.ValueFormatter(this));
             RegisterSingleton(typeof(IPropertyTypeConverter), NLog.Config.PropertyTypeConverter.Instance);
-            CreateInstance = new ConfigurationItemCreator(t => DefaultResolveInstance(t));
+            CreateInstance = DefaultResolveInstance;
             // Maybe also include active TimeSource ? Could also be done with LogFactory extension-methods
         }
 
@@ -78,7 +78,7 @@ namespace NLog.Config
         /// <param name="singletonObject">Singleton object to use for override</param>
         internal void RegisterSingleton(Type interfaceType, object singletonObject)
         {
-            _serviceRepository[interfaceType] = (t) => singletonObject;
+            _serviceRepository[interfaceType] = t => singletonObject;
         }
 
         public void RegisterType(Type type, ConfigurationItemCreator objectResolver)
