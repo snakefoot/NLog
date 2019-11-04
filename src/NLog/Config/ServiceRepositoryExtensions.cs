@@ -35,7 +35,7 @@ namespace NLog.Config
 {
     using NLog.Internal;
 
-    internal static class ServiceRepositoryHelper
+    internal static class ServiceRepositoryExtensions
     {
         public static IServiceResolver GetServiceResolver(this LoggingConfiguration loggingConfiguration)
         {
