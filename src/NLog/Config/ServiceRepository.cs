@@ -40,7 +40,7 @@ namespace NLog.Config
     using NLog.Targets;
 
     /// <summary>
-    /// Repository of intefaces used by NLog to allow override for dependency injection
+    /// Repository of interfaces used by NLog to allow override for dependency injection
     /// </summary>
     internal sealed class ServiceRepository : IServiceRepository
     {
