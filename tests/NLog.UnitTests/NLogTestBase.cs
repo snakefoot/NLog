@@ -56,8 +56,9 @@ namespace NLog.UnitTests
         protected NLogTestBase()
         {
             //reset before every test
-            LogManager.ThrowExceptions = false; // Ignore any errors triggered by closing existing config
-            LogManager.Configuration = null;    // Will close any existing config
+            LogManager.ThrowExceptions = false;             // Ignore any errors triggered by closing existing config
+            LogManager.Configuration = null;                // Close any existing config from previous unit-test
+            LogManager.LogFactory._userVariables.Clear();   // Clear any existing config variables from previous unit-test
             LogManager.LogFactory.ResetCandidateConfigFilePath();
 
             InternalLogger.Reset();

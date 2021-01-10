@@ -64,6 +64,7 @@ namespace NLog
         /// </remarks>
         internal readonly object _syncRoot = new object();
         private readonly LoggerCache _loggerCache = new LoggerCache();
+        internal readonly ThreadSafeDictionary<string, Layouts.Layout> _userVariables = new ThreadSafeDictionary<string, Layouts.Layout>(StringComparer.OrdinalIgnoreCase);
         private ServiceRepositoryInternal _serviceRepository = new ServiceRepositoryInternal();
         private IAppEnvironment _currentAppEnvironment;
         internal LoggingConfiguration _config;
@@ -205,9 +206,18 @@ namespace NLog
 
         /// <summary>
         /// Gets or sets a value indicating whether Variables should be kept on configuration reload.
-        /// Default value - false.
+        /// Default value - true.
         /// </summary>
-        public bool KeepVariablesOnReload { get; set; }
+        public bool KeepVariablesOnReload
+        {
+            get => _keepVariablesOnReload;
+            set
+            {
+                _keepVariablesOnReload = true;
+                _config?._variables.KeepVariablesOnReload(value ? _userVariables : null);
+            }
+        }
+        private bool _keepVariablesOnReload = true;
 
         /// <summary>
         /// Gets or sets a value indicating whether to automatically call <see cref="LogFactory.Shutdown"/>
@@ -279,6 +289,18 @@ namespace NLog
                         InternalLogger.Info("Closing old configuration.");
                         Flush();
                         oldConfig.Close();
+                    }
+
+                    if (!KeepVariablesOnReload)
+                    {
+                        if (!ReferenceEquals(oldConfig, value) || ReferenceEquals(value, null))
+                        {
+                            _userVariables.Clear();
+                        }
+                    }
+                    else
+                    {
+                        value?._variables.KeepVariablesOnReload(_userVariables);
                     }
 
                     _config = value;

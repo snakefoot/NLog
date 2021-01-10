@@ -624,6 +624,34 @@ namespace NLog.UnitTests.Config
         }
 
         [Fact]
+        public void KeepVariablesOnReloadWithStaticMode()
+        {
+            // Arrange
+            string config = @"<nlog autoReload='true'>
+                                <variable name='maxArchiveDays' value='7' />
+                                <targets>
+                                    <target name='logfile' type='file' fileName='test.log' maxArchiveDays='${maxArchiveDays}' />
+                                </targets>
+                                <rules>
+                                    <logger name='*' minLevel='Debug' writeTo='logfile' />
+                                </rules>
+                            </nlog>";
+            var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(config).LogFactory;
+            var fileTarget = logFactory.Configuration.AllTargets[0] as NLog.Targets.FileTarget;
+            var beforeValue = fileTarget.MaxArchiveDays;
+
+            // Act
+            logFactory.Configuration.Variables["MaxArchiveDays"] = "42";
+            logFactory.Setup().LoadConfigurationFromXml(config);
+            fileTarget = logFactory.Configuration.AllTargets[0] as NLog.Targets.FileTarget;
+            var afterValue = fileTarget.MaxArchiveDays;
+
+            // Assert
+            Assert.Equal(7, beforeValue);
+            Assert.Equal(42, afterValue);
+        }
+
+        [Fact]
         public void ReloadConfigOnTimer_When_No_Exception_Raises_ConfigurationReloadedEvent()
         {
             var called = false;

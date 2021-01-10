@@ -54,17 +54,12 @@ namespace NLog.Config
     ///<remarks>This class is thread-safe.<c>.ToList()</c> is used for that purpose.</remarks>
     public class LoggingConfiguration
     {
-        private readonly IDictionary<string, Target> _targets =
-            new Dictionary<string, Target>(StringComparer.OrdinalIgnoreCase);
+        private readonly IDictionary<string, Target> _targets = new Dictionary<string, Target>(StringComparer.OrdinalIgnoreCase);
+        internal readonly ConfigVariablesDictionary _variables;
 
         private List<object> _configItems = new List<object>();
 
         private bool _missingServiceTypes;
-
-        /// <summary>
-        /// Variables defined in xml or in API. name is case case insensitive. 
-        /// </summary>
-        private readonly ThreadSafeDictionary<string, Layout> _variables = new ThreadSafeDictionary<string, Layout>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Gets the factory that will be configured
@@ -86,11 +81,13 @@ namespace NLog.Config
         {
             LogFactory = logFactory ?? LogManager.LogFactory;
             LoggingRules = new List<LoggingRule>();
+            _variables = new ConfigVariablesDictionary(LogFactory.KeepVariablesOnReload ? LogFactory._userVariables : new ThreadSafeDictionary<string, Layout>(LogFactory._userVariables.Comparer));
         }
 
         /// <summary>
-        /// Gets the variables defined in the configuration.
+        /// Gets the variables defined in the configuration or assigned from API
         /// </summary>
+        /// <remarks>Name is case insensitive.</remarks>
         public IDictionary<string, Layout> Variables => _variables;
 
         /// <summary>
@@ -180,6 +177,11 @@ namespace NLog.Config
                 var configTargets = new HashSet<Target>(_configItems.OfType<Target>().Concat(GetAllTargetsThreadSafe()), SingleItemOptimizedHashSet<Target>.ReferenceEqualityComparer.Default);
                 return configTargets.ToList().AsReadOnly();
             }
+        }
+
+        internal void InsertConfigFileVariable(string key, Layout value)
+        {
+            _variables.InsertConfigFileVariable(key, value);
         }
 
         /// <summary>
@@ -471,15 +473,6 @@ namespace NLog.Config
                 {
                     InternalLogger.Warn("NLog Config Reload() failed. Invalid XML?");
                     return null;
-                }
-
-                if (LogFactory.KeepVariablesOnReload)
-                {
-                    var currentConfig = LogFactory._config ?? this;
-                    if (!ReferenceEquals(newConfig, currentConfig))
-                    {
-                        newConfig.CopyVariables(currentConfig.Variables);
-                    }
                 }
             }
 
@@ -835,15 +828,6 @@ namespace NLog.Config
         }
 
         /// <summary>
-        /// Copies all variables from provided dictionary into current configuration variables. 
-        /// </summary>
-        /// <param name="masterVariables">Master variables dictionary</param>
-        internal void CopyVariables(IDictionary<string, Layout> masterVariables)
-        {
-            _variables.CopyFrom(masterVariables);
-        }
-
-        /// <summary>
         /// Replace a simple variable with a value. The original value is removed and thus we cannot redo this in a later stage.
         /// </summary>
         /// <param name="input"></param>
@@ -875,7 +859,6 @@ namespace NLog.Config
                     //this value is set from xml and that's a string. Because of that, we can use SimpleLayout here.
                     if (layout is SimpleLayout simpleLayout)
                     {
-
                         output = StringHelpers.Replace(output, layoutText, simpleLayout.OriginalText, culture);
                     }
                 }

@@ -475,7 +475,7 @@ namespace NLog.Config
             if (!AssertNotNullValue(variableLayout, "value or text", variableElement.Name, "variables"))
                 return;
 
-            Variables[variableName] = variableLayout;
+            InsertConfigFileVariable(variableName, variableLayout);
         }
 
         private void ParseVariablesElement(ValidatedConfigurationElement variableElement)
