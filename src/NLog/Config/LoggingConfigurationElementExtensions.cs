@@ -58,8 +58,7 @@ namespace NLog.Config
                 $"Assertion failed. Expected element name '{string.Join("|", allowedNames)}', actual: '{section?.Name}'.");
         }
 
-        public static string GetRequiredValue(this ILoggingConfigurationElement element, string attributeName,
-            string section)
+        public static string GetRequiredValue(this ILoggingConfigurationElement element, string attributeName, string section)
         {
             string value = element.GetOptionalValue(attributeName, null);
             if (value == null)
@@ -76,18 +75,11 @@ namespace NLog.Config
             return value;
         }
 
-        public static string GetOptionalValue(this ILoggingConfigurationElement element, string attributeName,
-            string defaultValue)
+        public static string GetOptionalValue(this ILoggingConfigurationElement element, string attributeName, string defaultValue)
         {
-            string value = element.Values
+            return element.Values
                 .Where(configItem => string.Equals(configItem.Key, attributeName, StringComparison.OrdinalIgnoreCase))
-                .Select(configItem => configItem.Value).FirstOrDefault();
-            if (value == null)
-            {
-                return defaultValue;
-            }
-
-            return value;
+                .Select(configItem => configItem.Value).FirstOrDefault() ?? defaultValue;
         }
 
         /// <summary>
@@ -125,7 +117,7 @@ namespace NLog.Config
         public static string GetConfigItemTypeAttribute(this ILoggingConfigurationElement element, string sectionNameForRequiredValue = null)
         {
             var typeAttributeValue = sectionNameForRequiredValue != null ? element.GetRequiredValue("type", sectionNameForRequiredValue) : element.GetOptionalValue("type", null);
-            return StripOptionalNamespacePrefix(typeAttributeValue);
+            return StripOptionalNamespacePrefix(typeAttributeValue)?.Trim();
         }
 
         /// <summary>

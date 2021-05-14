@@ -36,7 +36,7 @@ namespace NLog
     using System;
     using System.Collections.Generic;
     using System.ComponentModel;
-#if NET4_5
+#if !NET35 && !NET40
     using System.Threading.Tasks;
 #endif
     using JetBrains.Annotations;
@@ -108,6 +108,8 @@ namespace NLog
 
         /// <summary>
         /// Creates new logger that automatically appends the specified property to all log events (without changing current logger)
+        /// 
+        /// With <see cref="Properties"/> property, all properties can be enumerated. 
         /// </summary>
         /// <param name="propertyKey">Property Name</param>
         /// <param name="propertyValue">Property Value</param>
@@ -128,19 +130,15 @@ namespace NLog
         /// <summary>
         /// Updates the specified context property for the current logger. The logger will append it for all log events.
         ///
-        /// It could be rendered with ${event-properties:YOURNAME}
-        ///
-        /// With <see cref="Properties"/> property, all properties could be changed. 
+        /// With <see cref="Properties"/> property, all properties can be enumerated (or updated). 
         /// </summary>
         /// <remarks>
-        /// Will affect all locations/contexts that makes use of the same named logger object.
+        /// It is highly recommended to ONLY use <see cref="WithProperty(string, object)"/> for modifying context properties.
+        /// This method will affect all locations/contexts that makes use of the same named logger object. And can cause
+        /// unexpected surprises at multiple locations and other thread contexts.
         /// </remarks>
         /// <param name="propertyKey">Property Name</param>
         /// <param name="propertyValue">Property Value</param>
-        /// <remarks>
-        /// It is recommended to use <see cref="WithProperty(string, object)"/> for modifying context properties
-        /// when same named logger is used at multiple locations or shared by different thread contexts.
-        /// </remarks>
         public void SetProperty(string propertyKey, object propertyValue)
         {
             if (string.IsNullOrEmpty(propertyKey))
@@ -155,6 +153,74 @@ namespace NLog
                 ? new ThreadSafeDictionary<string, object>(contextProperties)
                 : new ThreadSafeDictionary<string, object>();
             return contextProperties;
+        }
+
+        /// <summary>
+        /// Updates the <see cref="ScopeContext"/> with provided property
+        /// </summary>
+        /// <param name="propertyName">Name of property</param>
+        /// <param name="propertyValue">Value of property</param>
+        /// <returns>A disposable object that removes the properties from logical context scope on dispose.</returns>
+        /// <remarks><see cref="ScopeContext"/> property-dictionary-keys are case-insensitive</remarks>
+        public IDisposable PushScopeProperty(string propertyName, object propertyValue)
+        {
+            return ScopeContext.PushProperty(propertyName, propertyValue);
+        }
+
+        /// <summary>
+        /// Updates the <see cref="ScopeContext"/> with provided property
+        /// </summary>
+        /// <param name="propertyName">Name of property</param>
+        /// <param name="propertyValue">Value of property</param>
+        /// <returns>A disposable object that removes the properties from logical context scope on dispose.</returns>
+        /// <remarks><see cref="ScopeContext"/> property-dictionary-keys are case-insensitive</remarks>
+        public IDisposable PushScopeProperty<TValue>(string propertyName, TValue propertyValue)
+        {
+            return ScopeContext.PushProperty(propertyName, propertyValue);
+        }
+
+#if !NET35 && !NET40
+        /// <summary>
+        /// Updates the <see cref="ScopeContext"/> with provided properties
+        /// </summary>
+        /// <param name="scopeProperties">Properties being added to the scope dictionary</param>
+        /// <returns>A disposable object that removes the properties from logical context scope on dispose.</returns>
+        /// <remarks><see cref="ScopeContext"/> property-dictionary-keys are case-insensitive</remarks>
+        public IDisposable PushScopeProperties(IReadOnlyCollection<KeyValuePair<string, object>> scopeProperties)
+        {
+            return ScopeContext.PushProperties(scopeProperties);
+        }
+
+        /// <summary>
+        /// Updates the <see cref="ScopeContext"/> with provided properties
+        /// </summary>
+        /// <param name="scopeProperties">Properties being added to the scope dictionary</param>
+        /// <returns>A disposable object that removes the properties from logical context scope on dispose.</returns>
+        /// <remarks><see cref="ScopeContext"/> property-dictionary-keys are case-insensitive</remarks>
+        public IDisposable PushScopeProperties<TValue>(IReadOnlyCollection<KeyValuePair<string, TValue>> scopeProperties)
+        {
+            return ScopeContext.PushProperties(scopeProperties);
+        }
+#endif
+
+        /// <summary>
+        /// Pushes new state on the logical context scope stack
+        /// </summary>
+        /// <param name="nestedState">Value to added to the scope stack</param>
+        /// <returns>A disposable object that pops the nested scope state on dispose.</returns>
+        public IDisposable PushScopeState<T>(T nestedState)
+        {
+            return ScopeContext.PushNestedState(nestedState);
+        }
+
+        /// <summary>
+        /// Pushes new state on the logical context scope stack
+        /// </summary>
+        /// <param name="nestedState">Value to added to the scope stack</param>
+        /// <returns>A disposable object that pops the nested scope state on dispose.</returns>
+        public IDisposable PushScopeState(object nestedState)
+        {
+            return ScopeContext.PushNestedState(nestedState);
         }
 
         /// <summary>
@@ -241,19 +307,6 @@ namespace NLog
         }
 
         /// <summary>
-        /// Writes the diagnostic message and exception at the specified level.
-        /// </summary>
-        /// <param name="level">The log level.</param>
-        /// <param name="message">A <see langword="string" /> to be written.</param>
-        /// <param name="exception">An exception to be logged.</param>
-        /// <remarks>This method was marked as obsolete before NLog 4.3.11 and it may be removed in a future release.</remarks>
-        [Obsolete("Use Log(LogLevel, String, Exception) method instead. Marked obsolete before v4.3.11")]
-        public void LogException(LogLevel level, [Localizable(false)] string message, Exception exception)
-        {
-            Log(level, message, exception);
-        }
-
-        /// <summary>
         /// Writes the diagnostic message at the specified level using the specified parameters and formatting them with the supplied format provider.
         /// </summary>
         /// <param name="level">The log level.</param>
@@ -301,25 +354,9 @@ namespace NLog
         /// Writes the diagnostic message and exception at the specified level.
         /// </summary>
         /// <param name="level">The log level.</param>
-        /// <param name="message">A <see langword="string" /> to be written.</param>
         /// <param name="exception">An exception to be logged.</param>
-        /// <remarks>This method was marked as obsolete before NLog 4.3.11 and it may be removed in a future release.</remarks>
-        [Obsolete("Use Log(LogLevel level, Exception exception, [Localizable(false)] string message, params object[] args) instead. Marked obsolete before v4.3.11")]
-        public void Log(LogLevel level, [Localizable(false)] string message, Exception exception)
-        {
-            if (IsEnabled(level))
-            {
-                WriteToTargets(level, exception, message, null);
-            }
-        }
-
-        /// <summary>
-        /// Writes the diagnostic message and exception at the specified level.
-        /// </summary>
-        /// <param name="level">The log level.</param>
         /// <param name="message">A <see langword="string" /> to be written.</param>
         /// <param name="args">Arguments to format.</param>
-        /// <param name="exception">An exception to be logged.</param>
         [MessageTemplateFormatMethod("message")]
         public void Log(LogLevel level, Exception exception, [Localizable(false)] string message, params object[] args)
         {
@@ -333,10 +370,10 @@ namespace NLog
         /// Writes the diagnostic message and exception at the specified level.
         /// </summary>
         /// <param name="level">The log level.</param>
+        /// <param name="exception">An exception to be logged.</param>
         /// <param name="formatProvider">An IFormatProvider that supplies culture-specific formatting information.</param>
         /// <param name="message">A <see langword="string" /> to be written.</param>
         /// <param name="args">Arguments to format.</param>
-        /// <param name="exception">An exception to be logged.</param>
         [MessageTemplateFormatMethod("message")]
         public void Log(LogLevel level, Exception exception, IFormatProvider formatProvider, [Localizable(false)] string message, params object[] args)
         {
@@ -528,7 +565,7 @@ namespace NLog
             }
         }
 
-#if NET4_5
+#if !NET35 && !NET40
         /// <summary>
         /// Logs an exception is logged at <c>Error</c> level if the provided task does not run to completion.
         /// </summary>
@@ -662,7 +699,10 @@ namespace NLog
             var targetsForLevel = GetTargetsForLevel(level);
             if (targetsForLevel != null)
             {
-                var logEvent = LogEventInfo.Create(level, Name, ex, Factory.DefaultCultureInfo, message, args);
+                // Translate Exception with missing LogEvent message as log single value (See also ExceptionMessageFormatProvider)
+                var logEvent = message == null && ex != null && !(args?.Length > 0) ? 
+                    LogEventInfo.Create(level, Name, null, ex) :
+                    LogEventInfo.Create(level, Name, ex, Factory.DefaultCultureInfo, message, args);
                 WriteToTargets(logEvent, targetsForLevel);
             }
         }

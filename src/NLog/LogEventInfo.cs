@@ -31,17 +31,14 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-using JetBrains.Annotations;
-
 namespace NLog
 {
     using System;
-    using System.Collections;
     using System.Collections.Generic;
     using System.ComponentModel;
     using System.Diagnostics;
-    using System.Globalization;
     using System.Threading;
+    using JetBrains.Annotations;
     using NLog.Common;
     using NLog.Internal;
     using NLog.Layouts;
@@ -57,9 +54,6 @@ namespace NLog
         /// Gets the date of the first log event created.
         /// </summary>
         public static readonly DateTime ZeroDate = DateTime.UtcNow;
-        internal static readonly LogMessageFormatter StringFormatMessageFormatter = GetStringFormatMessageFormatter;
-        internal static LogMessageFormatter DefaultMessageFormatter { get; private set; } = LogMessageTemplateFormatter.DefaultAuto.MessageFormatter;
-
         private static int globalSequenceId;
 
         /// <summary>
@@ -74,9 +68,10 @@ namespace NLog
 
         private object[] _parameters;
         private IFormatProvider _formatProvider;
-        private LogMessageFormatter _messageFormatter = DefaultMessageFormatter;
+        private LogMessageFormatter _messageFormatter;
         private IDictionary<Layout, object> _layoutCache;
         private PropertiesDictionary _properties;
+        private int _sequenceId;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LogEventInfo" /> class.
@@ -84,14 +79,13 @@ namespace NLog
         public LogEventInfo()
         {
             TimeStamp = TimeSource.Current.Time;
-            SequenceID = Interlocked.Increment(ref globalSequenceId);
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LogEventInfo" /> class.
         /// </summary>
         /// <param name="level">Log level.</param>
-        /// <param name="loggerName">Logger name.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="message">Log message including parameter placeholders.</param>
         public LogEventInfo(LogLevel level, string loggerName, [Localizable(false)] string message)
             : this(level, loggerName, null, message, null, null)
@@ -102,7 +96,7 @@ namespace NLog
         /// Initializes a new instance of the <see cref="LogEventInfo" /> class.
         /// </summary>
         /// <param name="level">Log level.</param>
-        /// <param name="loggerName">Logger name.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="message">Log message including parameter placeholders.</param>
         /// <param name="messageTemplateParameters">Log message including parameter placeholders.</param>
         public LogEventInfo(LogLevel level, string loggerName, [Localizable(false)] string message, IList<MessageTemplateParameter> messageTemplateParameters)
@@ -121,11 +115,11 @@ namespace NLog
         /// Initializes a new instance of the <see cref="LogEventInfo" /> class.
         /// </summary>
         /// <param name="level">Log level.</param>
-        /// <param name="loggerName">Logger name.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="formatProvider">An IFormatProvider that supplies culture-specific formatting information.</param>
         /// <param name="message">Log message including parameter placeholders.</param>
         /// <param name="parameters">Parameter array.</param>
-        public LogEventInfo(LogLevel level, string loggerName, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters) 
+        public LogEventInfo(LogLevel level, string loggerName, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters)
             : this(level, loggerName, formatProvider, message, parameters, null)
         {
         }
@@ -134,12 +128,13 @@ namespace NLog
         /// Initializes a new instance of the <see cref="LogEventInfo" /> class.
         /// </summary>
         /// <param name="level">Log level.</param>
-        /// <param name="loggerName">Logger name.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="formatProvider">An IFormatProvider that supplies culture-specific formatting information.</param>
         /// <param name="message">Log message including parameter placeholders.</param>
         /// <param name="parameters">Parameter array.</param>
         /// <param name="exception">Exception information.</param>
-        public LogEventInfo(LogLevel level, string loggerName, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters, Exception exception): this()
+        public LogEventInfo(LogLevel level, string loggerName, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters, Exception exception)
+            : this()
         {
             Level = level;
             LoggerName = loggerName;
@@ -147,11 +142,6 @@ namespace NLog
             Parameters = parameters;
             FormatProvider = formatProvider;
             Exception = exception;
-         
-            if (NeedToPreformatMessage(parameters))
-            {
-                CalcFormattedMessage();
-            }
         }
 
         /// <summary>
@@ -160,7 +150,15 @@ namespace NLog
         /// </summary>
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Naming", "CA1709:IdentifiersShouldBeCasedCorrectly", MessageId = "ID", Justification = "Backwards compatibility")]
         // ReSharper disable once InconsistentNaming
-        public int SequenceID { get; private set; }
+        public int SequenceID
+        {
+            get
+            {
+                if (_sequenceId == 0)
+                    Interlocked.CompareExchange(ref _sequenceId, Interlocked.Increment(ref globalSequenceId), 0);
+                return _sequenceId;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the timestamp of the logging event.
@@ -207,7 +205,7 @@ namespace NLog
         /// <summary>
         /// Gets the callsite member function name
         /// </summary>
-        public string CallerMemberName => CallSiteInformation?.GetCallerMemberName(null, false, true, true);
+        public string CallerMemberName => CallSiteInformation?.GetCallerMethodName(null, false, true, true);
 
         /// <summary>
         /// Gets the callsite source file path
@@ -230,28 +228,6 @@ namespace NLog
         /// </summary>
         [CanBeNull]
         public string LoggerName { get; set; }
-
-        /// <summary>
-        /// Gets the logger short name.
-        /// </summary>
-        /// <remarks>This property was marked as obsolete on NLog 2.0 and it may be removed in a future release.</remarks>
-        [Obsolete("This property should not be used. Marked obsolete on NLog 2.0")]
-        public string LoggerShortName
-        {
-            // NOTE: This property is not referenced by NLog code anymore. 
-            get
-            {
-                if (LoggerName == null) return LoggerName;
-
-                int lastDot = LoggerName.LastIndexOf('.');
-                if (lastDot >= 0)
-                {
-                    return LoggerName.Substring(lastDot + 1);
-                }
-
-                return LoggerName;
-            }
-        }
 
         /// <summary>
         /// Gets or sets the log message including any parameter placeholders.
@@ -305,10 +281,10 @@ namespace NLog
         /// </summary>
         public LogMessageFormatter MessageFormatter
         {
-            get => _messageFormatter;
+            get => _messageFormatter ?? LogManager.LogFactory.ActiveMessageFormatter;
             set
             {
-                _messageFormatter = value ?? StringFormatMessageFormatter;
+                _messageFormatter = value ?? LogMessageStringFormatter.Default.MessageFormatter;
                 ResetFormattedMessage(false);
             }
         }
@@ -318,7 +294,7 @@ namespace NLog
         /// </summary>
         public string FormattedMessage
         {
-            get 
+            get
             {
                 if (_formattedMessage == null)
                 {
@@ -389,7 +365,7 @@ namespace NLog
                 // Have not yet parsed/rendered the FormattedMessage, so check with ILogMessageFormatter
                 if (_formattedMessage == null && _parameters?.Length > 0)
                 {
-                    var logMessageFormatter = _messageFormatter?.Target as ILogMessageFormatter;
+                    var logMessageFormatter = MessageFormatter.Target as ILogMessageFormatter;
                     return logMessageFormatter?.HasProperties(this) ?? false;
                 }
                 return false;
@@ -419,52 +395,45 @@ namespace NLog
         }
 
         /// <summary>
-        /// Gets the dictionary of per-event context properties.
-        /// </summary>
-        /// <remarks>This property was marked as obsolete on NLog 2.0 and it may be removed in a future release.</remarks>
-        [Obsolete("Use LogEventInfo.Properties instead.  Marked obsolete on NLog 2.0", true)]
-        public IDictionary Context => CreateOrUpdatePropertiesInternal().EventContext;
-
-        /// <summary>
         /// Creates the null event.
         /// </summary>
         /// <returns>Null log event.</returns>
         public static LogEventInfo CreateNullEvent()
         {
-            return new LogEventInfo(LogLevel.Off, string.Empty, string.Empty);
+            return new LogEventInfo(LogLevel.Off, string.Empty, null, string.Empty, null, null);
         }
 
         /// <summary>
         /// Creates the log event.
         /// </summary>
         /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="message">The message.</param>
         /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
         public static LogEventInfo Create(LogLevel logLevel, string loggerName, [Localizable(false)] string message)
         {
-            return new LogEventInfo(logLevel, loggerName, null, message, null);
+            return new LogEventInfo(logLevel, loggerName, null, message, null, null);
         }
 
         /// <summary>
         /// Creates the log event.
         /// </summary>
         /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="formatProvider">The format provider.</param>
         /// <param name="message">The message.</param>
         /// <param name="parameters">The parameters.</param>
         /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
         public static LogEventInfo Create(LogLevel logLevel, string loggerName, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters)
         {
-            return new LogEventInfo(logLevel, loggerName, formatProvider, message, parameters);
+            return new LogEventInfo(logLevel, loggerName, formatProvider, message, parameters, null);
         }
 
         /// <summary>
         /// Creates the log event.
         /// </summary>
         /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="formatProvider">The format provider.</param>
         /// <param name="message">The message.</param>
         /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
@@ -478,6 +447,7 @@ namespace NLog
                 logEvent.FormatProvider = formatProvider ?? logEvent.FormatProvider;
                 return logEvent;
             }
+            formatProvider = formatProvider ?? (exception != null ? ExceptionMessageFormatProvider.Instance : null);
             return new LogEventInfo(logLevel, loggerName, formatProvider, "{0}", new[] { message }, exception);
         }
 
@@ -485,36 +455,21 @@ namespace NLog
         /// Creates the log event.
         /// </summary>
         /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
-        /// <param name="message">The message.</param>
-        /// <param name="exception">The exception.</param>
-        /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
-        /// <remarks>This method was marked as obsolete before NLog 4.3.11 and it may be removed in a future release.</remarks>
-        [Obsolete("use Create(LogLevel logLevel, string loggerName, Exception exception, IFormatProvider formatProvider, string message) instead. Marked obsolete before v4.3.11")]
-        public static LogEventInfo Create(LogLevel logLevel, string loggerName, [Localizable(false)] string message, Exception exception)
-        {
-            return new LogEventInfo(logLevel, loggerName, null, message, null, exception);
-        }
-
-        /// <summary>
-        /// Creates the log event.
-        /// </summary>
-        /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="exception">The exception.</param>
         /// <param name="formatProvider">The format provider.</param>
         /// <param name="message">The message.</param>
         /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
         public static LogEventInfo Create(LogLevel logLevel, string loggerName, Exception exception, IFormatProvider formatProvider, [Localizable(false)] string message)
         {
-            return Create(logLevel, loggerName, exception, formatProvider, message, null);
+            return new LogEventInfo(logLevel, loggerName, formatProvider, message, null, exception);
         }
 
         /// <summary>
         /// Creates the log event.
         /// </summary>
         /// <param name="logLevel">The log level.</param>
-        /// <param name="loggerName">Name of the logger.</param>
+        /// <param name="loggerName">Override default Logger name. Default <see cref="Logger.Name"/> is used when <c>null</c></param>
         /// <param name="exception">The exception.</param>
         /// <param name="formatProvider">The format provider.</param>
         /// <param name="message">The message.</param>
@@ -522,7 +477,7 @@ namespace NLog
         /// <returns>Instance of <see cref="LogEventInfo"/>.</returns>
         public static LogEventInfo Create(LogLevel logLevel, string loggerName, Exception exception, IFormatProvider formatProvider, [Localizable(false)] string message, object[] parameters)
         {
-            return new LogEventInfo(logLevel, loggerName,formatProvider, message, parameters, exception);
+            return new LogEventInfo(logLevel, loggerName, formatProvider, message, parameters, exception);
         }
 
         /// <summary>
@@ -594,12 +549,7 @@ namespace NLog
 
             lock (_layoutCache)
             {
-                if (_layoutCache.Count == 0)
-                {
-                    value = null;
-                    return false;
-                }
-
+                // dictionary is always non-empty when created
                 return _layoutCache.TryGetValue(layout, out value);
             }
         }
@@ -676,29 +626,25 @@ namespace NLog
             return true;
         }
 
-        internal bool CanLogEventDeferMessageFormat()
+        internal void SetMessageFormatter([NotNull] LogMessageFormatter messageFormatter, [CanBeNull] LogMessageFormatter singleTargetMessageFormatter)
         {
-            if (_formattedMessage != null)
-                return false;   // Already formatted, cannot be deferred
-
-            if (_parameters == null || _parameters.Length == 0)
-                return false;   // No parameters to format
-
-            if (_message?.Length < 256 && ReferenceEquals(MessageFormatter, LogMessageTemplateFormatter.DefaultAuto.MessageFormatter))
-                return true;    // Not too expensive to scan for properties
-            else
-                return false;
-        }
-
-        private static string GetStringFormatMessageFormatter(LogEventInfo logEvent)
-        {
-            if (logEvent.Parameters == null || logEvent.Parameters.Length == 0)
+            bool hasCustomMessageFormatter = _messageFormatter != null;
+            if (!hasCustomMessageFormatter)
             {
-                return logEvent.Message;
+                _messageFormatter = messageFormatter;
+            }
+
+            if (NeedToPreformatMessage(_parameters))
+            {
+                CalcFormattedMessage();
             }
             else
             {
-                return string.Format(logEvent.FormatProvider ?? CultureInfo.CurrentCulture, logEvent.Message, logEvent.Parameters);
+                if (!hasCustomMessageFormatter && singleTargetMessageFormatter != null && _parameters?.Length > 0 && _message?.Length < 256)
+                {
+                    // Change MessageFormatter so it writes directly to StringBuilder without string-allocation
+                    _messageFormatter = singleTargetMessageFormatter;
+                }
             }
         }
 
@@ -706,7 +652,7 @@ namespace NLog
         {
             try
             {
-                _formattedMessage = _messageFormatter(this);
+                _formattedMessage = MessageFormatter(this);
             }
             catch (Exception exception)
             {
@@ -726,7 +672,7 @@ namespace NLog
             {
                 builder.Append(_formattedMessage);
             }
-            else
+            else if (_parameters?.Length > 0 && !string.IsNullOrEmpty(_message))
             {
                 int originalLength = builder.Length;
                 try
@@ -743,6 +689,10 @@ namespace NLog
                         throw;
                     }
                 }
+            }
+            else
+            {
+                builder.Append(FormattedMessage);
             }
         }
 
@@ -765,30 +715,6 @@ namespace NLog
                 return _properties.MessageProperties.Count == 0;
             }
             return false;
-        }
-
-        /// <summary>
-        /// Set the <see cref="DefaultMessageFormatter"/>
-        /// </summary>
-        /// <param name="mode">true = Always, false = Never, null = Auto Detect</param>
-        internal static void SetDefaultMessageFormatter(bool? mode)
-        {
-            if (mode == true)
-            {
-                InternalLogger.Info("Message Template Format always enabled");
-                DefaultMessageFormatter = LogMessageTemplateFormatter.Default.MessageFormatter;
-            }
-            else if (mode == false)
-            {
-                InternalLogger.Info("Message Template String Format always enabled");
-                DefaultMessageFormatter = StringFormatMessageFormatter;
-            }
-            else
-            {
-                //null = auto
-                InternalLogger.Info("Message Template Auto Format enabled");
-                DefaultMessageFormatter = LogMessageTemplateFormatter.DefaultAuto.MessageFormatter;
-            }
         }
     }
 }

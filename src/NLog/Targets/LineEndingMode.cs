@@ -131,11 +131,7 @@ namespace NLog.Targets
             if (name.Equals(Null.Name, StringComparison.OrdinalIgnoreCase)) return Null;
             if (name.Equals(None.Name, StringComparison.OrdinalIgnoreCase)) return None;
 
-#if !SILVERLIGHT
             throw new ArgumentOutOfRangeException(nameof(name), name, "LineEndingMode is out of range");
-#else
-            throw new ArgumentOutOfRangeException("name", "LineEndingMode is out of range");
-#endif
         }
 
         /// <summary>
@@ -245,7 +241,8 @@ namespace NLog.Targets
             /// <returns>
             /// true if this converter can perform the conversion; otherwise, false.
             /// </returns>
-            /// <param name="context">An <see cref="T:System.ComponentModel.ITypeDescriptorContext"/> that provides a format context. </param><param name="sourceType">A <see cref="T:System.Type"/> that represents the type you want to convert from. </param>
+            /// <param name="context">An <see cref="T:System.ComponentModel.ITypeDescriptorContext"/> that provides a format context. </param>
+            /// <param name="sourceType">A <see cref="T:System.Type"/> that represents the type you want to convert from. </param>
             public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType)
             {
                 return sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
@@ -257,7 +254,10 @@ namespace NLog.Targets
             /// <returns>
             /// An <see cref="T:System.Object"/> that represents the converted value.
             /// </returns>
-            /// <param name="context">An <see cref="T:System.ComponentModel.ITypeDescriptorContext"/> that provides a format context. </param><param name="culture">The <see cref="T:System.Globalization.CultureInfo"/> to use as the current culture. </param><param name="value">The <see cref="T:System.Object"/> to convert. </param><exception cref="T:System.NotSupportedException">The conversion cannot be performed. </exception>
+            /// <param name="context">An <see cref="T:System.ComponentModel.ITypeDescriptorContext"/> that provides a format context. </param>
+            /// <param name="culture">The <see cref="T:System.Globalization.CultureInfo"/> to use as the current culture. </param>
+            /// <param name="value">The <see cref="T:System.Object"/> to convert. </param>
+            /// <exception cref="T:System.NotSupportedException">The conversion cannot be performed. </exception>
             public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)
             {
                 var name = value as string;

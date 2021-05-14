@@ -36,20 +36,19 @@ namespace NLog.Internal
     using System;
     using System.Globalization;
     using System.Text;
-    using System.Text.RegularExpressions;
     using System.Xml;
 
     /// <summary>
     ///  Helper class for XML
     /// </summary>
-    public static class XmlHelper
+    internal static class XmlHelper
     {
         // found on https://stackoverflow.com/questions/397250/unicode-regex-invalid-xml-characters/961504#961504
         // filters control characters but allows only properly-formed surrogate sequences
-#if NET3_5 || NETSTANDARD1_0
-        private static readonly Regex InvalidXmlChars = new Regex(
+#if NET35 || NETSTANDARD1_3 || NETSTANDARD1_5
+        private static readonly System.Text.RegularExpressions.Regex InvalidXmlChars = new System.Text.RegularExpressions.Regex(
             @"(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\uFEFF\uFFFE\uFFFF]",
-            RegexOptions.Compiled);
+            System.Text.RegularExpressions.RegexOptions.Compiled);
 #endif
 
         /// <summary>
@@ -60,22 +59,27 @@ namespace NLog.Internal
             if (string.IsNullOrEmpty(text))
                 return string.Empty;
 
-#if NET3_5 || NETSTANDARD1_0
-            return InvalidXmlChars.Replace(text, "");
-#else
-            for (int i = 0; i < text.Length; ++i)
+#if !NET35 && !NETSTANDARD1_3 && !NETSTANDARD1_5
+            int length = text.Length;
+            for (int i = 0; i < length; ++i)
             {
                 char ch = text[i];
-                if (!XmlConvert.IsXmlChar(ch))
+                if (!XmlConvert.IsXmlChar(ch) && !(i + 1 < text.Length && XmlConvert.IsXmlSurrogatePair(text[i + 1], text[i])))
                 {
                     return CreateValidXmlString(text);   // rare expensive case
                 }
+                else
+                {
+                    ++i;
+                }
             }
             return text;
+#else
+            return InvalidXmlChars.Replace(text, "");
 #endif
         }
 
-#if !NET3_5 && !NETSTANDARD1_0
+#if !NET35 && !NETSTANDARD1_3 && !NETSTANDARD1_5
         /// <summary>
         /// Cleans string of any invalid XML chars found
         /// </summary>
@@ -185,6 +189,33 @@ namespace NLog.Internal
             return XmlConvertToString(value, false);
         }
 
+        internal static string XmlConvertToString(float value)
+        {
+            if (float.IsNaN(value))
+                return XmlConvert.ToString(value);
+
+            if (float.IsInfinity(value))
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
+
+            return EnsureDecimalPlace(XmlConvert.ToString(value));
+        }
+
+        internal static string XmlConvertToString(double value)
+        {
+            if (double.IsNaN(value))
+                return XmlConvert.ToString(value);
+
+            if (double.IsInfinity(value))
+                return Convert.ToString(value, CultureInfo.InvariantCulture);
+
+            return EnsureDecimalPlace(XmlConvert.ToString(value));
+        }
+
+        internal static string XmlConvertToString(decimal value)
+        {
+            return EnsureDecimalPlace(XmlConvert.ToString(value));
+        }
+
         /// <summary>
         /// XML elements must follow these naming rules:
         ///  - Element names are case-sensitive
@@ -193,13 +224,14 @@ namespace NLog.Internal
         ///  - Element names cannot contain spaces
         /// </summary>
         /// <param name="xmlElementName"></param>
-        /// <param name="allowNamespace"></param>
-        internal static string XmlConvertToElementName(string xmlElementName, bool allowNamespace)
+        internal static string XmlConvertToElementName(string xmlElementName)
         {
             if (string.IsNullOrEmpty(xmlElementName))
                 return xmlElementName;
 
             xmlElementName = RemoveInvalidXmlChars(xmlElementName);
+
+            bool allowNamespace = true;
 
             StringBuilder sb = null;
             for (int i = 0; i < xmlElementName.Length; ++i)
@@ -250,7 +282,7 @@ namespace NLog.Internal
 
                 if (sb == null)
                 {
-                    sb = CreateStringBuilder(i);
+                    sb = CreateStringBuilder(xmlElementName, i);
                 }
                 sb.Append('_');
                 if (includeChr)
@@ -260,11 +292,11 @@ namespace NLog.Internal
             sb?.TrimRight();
             return sb?.ToString() ?? xmlElementName;
 
-            StringBuilder CreateStringBuilder(int i)
+            StringBuilder CreateStringBuilder(string orgValue, int i)
             {
-                var sb2 = new StringBuilder(xmlElementName.Length);
+                var sb2 = new StringBuilder(orgValue.Length);
                 if (i > 0)
-                    sb2.Append(xmlElementName, 0, i);
+                    sb2.Append(orgValue, 0, i);
                 return sb2;
             }
         }
@@ -273,8 +305,8 @@ namespace NLog.Internal
         {
             try
             {
-                IConvertible convertibleValue = value as IConvertible;
-                TypeCode objTypeCode = value == null ? TypeCode.Empty : (convertibleValue?.GetTypeCode() ?? TypeCode.Object);
+                var convertibleValue = value as IConvertible;
+                var objTypeCode = convertibleValue?.GetTypeCode() ?? (value == null ? TypeCode.Empty : TypeCode.Object);
                 if (objTypeCode != TypeCode.Object)
                 {
                     return XmlConvertToString(convertibleValue, objTypeCode, safeConversion);
@@ -336,21 +368,11 @@ namespace NLog.Internal
                 case TypeCode.UInt64:
                     return XmlConvert.ToString(value.ToUInt64(CultureInfo.InvariantCulture));
                 case TypeCode.Single:
-                    {
-                        float singleValue = value.ToSingle(CultureInfo.InvariantCulture);
-                        return float.IsInfinity(singleValue) ?
-                            Convert.ToString(singleValue, CultureInfo.InvariantCulture) :
-                            XmlConvert.ToString(singleValue);
-                    }
+                    return XmlConvertToString(value.ToSingle(CultureInfo.InvariantCulture));
                 case TypeCode.Double:
-                    {
-                        double doubleValue = value.ToDouble(CultureInfo.InvariantCulture);
-                        return double.IsInfinity(doubleValue) ?
-                            Convert.ToString(doubleValue, CultureInfo.InvariantCulture) :
-                            XmlConvert.ToString(doubleValue);
-                    }
+                    return XmlConvertToString(value.ToDouble(CultureInfo.InvariantCulture));
                 case TypeCode.Decimal:
-                    return XmlConvert.ToString(value.ToDecimal(CultureInfo.InvariantCulture));
+                    return XmlConvertToString(value.ToDecimal(CultureInfo.InvariantCulture));
                 case TypeCode.DateTime:
                     return XmlConvert.ToString(value.ToDateTime(CultureInfo.InvariantCulture), XmlDateTimeSerializationMode.Utc);
                 case TypeCode.Char:
@@ -366,24 +388,11 @@ namespace NLog.Internal
         /// Safe version of WriteAttributeString
         /// </summary>
         /// <param name="writer"></param>
-        /// <param name="prefix"></param>
-        /// <param name="localName"></param>
-        /// <param name="ns"></param>
-        /// <param name="value"></param>
-        public static void WriteAttributeSafeString(this XmlWriter writer, string prefix, string localName, string ns, string value)
-        {
-            writer.WriteAttributeString(RemoveInvalidXmlChars(prefix), RemoveInvalidXmlChars(localName), RemoveInvalidXmlChars(ns), RemoveInvalidXmlChars(value));
-        }
-
-        /// <summary>
-        /// Safe version of WriteAttributeString
-        /// </summary>
-        /// <param name="writer"></param>
         /// <param name="localName"></param>
         /// <param name="value"></param>
         public static void WriteAttributeSafeString(this XmlWriter writer, string localName, string value)
         {
-            writer.WriteAttributeString(RemoveInvalidXmlChars(localName), RemoveInvalidXmlChars(value));
+            writer.WriteAttributeString(localName, RemoveInvalidXmlChars(value));
         }
 
         /// <summary>
@@ -396,18 +405,44 @@ namespace NLog.Internal
         /// <param name="value"></param>
         public static void WriteElementSafeString(this XmlWriter writer, string prefix, string localName, string ns, string value)
         {
-            writer.WriteElementString(RemoveInvalidXmlChars(prefix), RemoveInvalidXmlChars(localName), RemoveInvalidXmlChars(ns),
-                                      RemoveInvalidXmlChars(value));
+            writer.WriteElementString(prefix, localName, ns, RemoveInvalidXmlChars(value));
         }
 
         /// <summary>
         /// Safe version of WriteCData
         /// </summary>
         /// <param name="writer"></param>
-        /// <param name="text"></param>
-        public static void WriteSafeCData(this XmlWriter writer, string text)
+        /// <param name="value"></param>
+        public static void WriteSafeCData(this XmlWriter writer, string value)
         {
-            writer.WriteCData(RemoveInvalidXmlChars(text));
+            writer.WriteCData(RemoveInvalidXmlChars(value));
         }
+
+        private static string EnsureDecimalPlace(string text)
+        {
+            if (text.IndexOf('.') != -1 || text.IndexOfAny(DecimalScientificExponent) != -1)
+            {
+                return text;
+            }
+            else if (text.Length == 1)
+            {
+                switch (text[0])
+                {
+                    case '0': return "0.0";
+                    case '1': return "1.0";
+                    case '2': return "2.0";
+                    case '3': return "3.0";
+                    case '4': return "4.0";
+                    case '5': return "5.0";
+                    case '6': return "6.0";
+                    case '7': return "7.0";
+                    case '8': return "8.0";
+                    case '9': return "9.0";
+                }
+            }
+            return text + ".0";
+        }
+
+        private static readonly char[] DecimalScientificExponent = new[] { 'e', 'E' };
     }
 }

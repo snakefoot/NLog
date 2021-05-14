@@ -63,13 +63,16 @@ namespace NLog
         /// Internal for unit tests
         /// </remarks>
         internal readonly object _syncRoot = new object();
-        internal LoggingConfiguration _config;
+        private readonly LoggerCache _loggerCache = new LoggerCache();
+        [NotNull] private ServiceRepositoryInternal _serviceRepository = new ServiceRepositoryInternal();
         private IAppEnvironment _currentAppEnvironment;
+        internal LoggingConfiguration _config;
+        internal LogMessageFormatter ActiveMessageFormatter;
+        internal LogMessageFormatter SingleTargetMessageFormatter;
         private LogLevel _globalThreshold = LogLevel.MinLevel;
         private bool _configLoaded;
         // TODO: logsEnabled property might be possible to be encapsulated into LogFactory.LogsEnabler class. 
         private int _logsEnabled;
-        private readonly LoggerCache _loggerCache = new LoggerCache();
 
         /// <summary>
         /// Overwrite possible file paths (including filename) for possible NLog config files. 
@@ -84,7 +87,7 @@ namespace NLog
         /// </summary>
         public event EventHandler<LoggingConfigurationChangedEventArgs> ConfigurationChanged;
 
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+#if !NETSTANDARD1_3
         /// <summary>
         /// Occurs when logging <see cref="Configuration" /> gets reloaded.
         /// </summary>
@@ -93,7 +96,7 @@ namespace NLog
 
         private static event EventHandler<EventArgs> LoggerShutdown;
 
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+#if !NETSTANDARD1_3
         /// <summary>
         /// Initializes static members of the LogManager class.
         /// </summary>
@@ -108,18 +111,21 @@ namespace NLog
         /// Initializes a new instance of the <see cref="LogFactory" /> class.
         /// </summary>
         public LogFactory()
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
-            : this(new LoggingConfigurationWatchableFileLoader(DefaultAppEnvironment))
+#if !NETSTANDARD1_3
+            : this(new LoggingConfigurationWatchableFileLoader(DefaultAppEnvironment))  // TODO NLog 5 -Move file-watcher logic into XmlLoggingConfiguration
 #else
             : this(new LoggingConfigurationFileLoader(DefaultAppEnvironment))
 #endif
         {
+            _serviceRepository.TypeRegistered += ServiceRepository_TypeRegistered;
+            RefreshMessageFormatter();
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LogFactory" /> class.
         /// </summary>
         /// <param name="config">The config.</param>
+        [Obsolete("Constructor with LoggingConfiguration as parameter should not be used. Instead provide LogFactory as parameter when constructing LoggingConfiguration. Marked obsolete in NLog 5.0")]
         public LogFactory(LoggingConfiguration config)
             : this()
         {
@@ -135,7 +141,7 @@ namespace NLog
         {
             _configLoader = configLoader;
             _currentAppEnvironment = appEnvironment;
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+#if !NETSTANDARD1_3
             LoggerShutdown += OnStopLogging;
 #endif
         }
@@ -163,10 +169,10 @@ namespace NLog
             get
             {
                 return defaultAppEnvironment ?? (defaultAppEnvironment = new AppEnvironmentWrapper(currentAppDomain ?? (currentAppDomain =
-#if NETSTANDARD1_0
-                    new FakeAppDomain()
-#else
+#if !NETSTANDARD1_3 && !NETSTANDARD1_5
                     new AppDomainWrapper(AppDomain.CurrentDomain)
+#else
+                    new FakeAppDomain()                    
 #endif
                     )));
             }
@@ -201,7 +207,7 @@ namespace NLog
         /// Gets or sets a value indicating whether Variables should be kept on configuration reload.
         /// Default value - false.
         /// </summary>
-        public bool KeepVariablesOnReload { get; set; }
+        public bool KeepVariablesOnReload { get; set; } = true;
 
         /// <summary>
         /// Gets or sets a value indicating whether to automatically call <see cref="LogFactory.Shutdown"/>
@@ -215,7 +221,7 @@ namespace NLog
                 if (value != _autoShutdown)
                 {
                     _autoShutdown = value;
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+#if !NETSTANDARD1_3
                     LoggerShutdown -= OnStopLogging;
                     if (value)
                         LoggerShutdown += OnStopLogging;
@@ -301,6 +307,45 @@ namespace NLog
         }
 
         /// <summary>
+        /// Repository of interfaces used by NLog to allow override for dependency injection
+        /// </summary>
+        [NotNull]
+        public ServiceRepository ServiceRepository
+        {
+            get => _serviceRepository;
+            internal set
+            {
+                _serviceRepository.TypeRegistered -= ServiceRepository_TypeRegistered;
+                _serviceRepository = (value as ServiceRepositoryInternal) ?? new ServiceRepositoryInternal(true);
+                _serviceRepository.TypeRegistered += ServiceRepository_TypeRegistered;
+            }
+        }
+
+        private void ServiceRepository_TypeRegistered(object sender, ServiceRepositoryUpdateEventArgs e)
+        {
+            _config?.CheckForMissingServiceTypes(e.ServiceType);
+
+            if (e.ServiceType == typeof(ILogMessageFormatter))
+            {
+                RefreshMessageFormatter();
+            }
+        }
+
+        private void RefreshMessageFormatter()
+        {
+            var messageFormatter = _serviceRepository.GetService<ILogMessageFormatter>();
+            ActiveMessageFormatter = messageFormatter.FormatMessage;
+            if (messageFormatter is LogMessageTemplateFormatter templateFormatter)
+            {
+                SingleTargetMessageFormatter = new LogMessageTemplateFormatter(_serviceRepository, templateFormatter.ForceTemplateRenderer, true).FormatMessage;
+            }
+            else
+            {
+                SingleTargetMessageFormatter = null;
+            }
+        }
+
+        /// <summary>
         /// Gets or sets the global log level threshold. Log events below this threshold are not logged.
         /// </summary>
         public LogLevel GlobalThreshold
@@ -338,7 +383,7 @@ namespace NLog
             InternalLogger.Info("Configuration initialized.");
             try
             {
-                InternalLogger.LogAssemblyVersion(typeof(ILogger).GetAssembly());
+                InternalLogger.LogAssemblyVersion(typeof(LogFactory).GetAssembly());
             }
             catch (SecurityException ex)
             {
@@ -393,12 +438,10 @@ namespace NLog
         [MethodImpl(MethodImplOptions.NoInlining)]
         public Logger GetCurrentClassLogger()
         {
-#if NETSTANDARD1_0
-            var className = StackTraceUsageUtils.GetClassFullName();
-#elif SILVERLIGHT
-            var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1));
-#else
+#if !NETSTANDARD1_3 && !NETSTANDARD1_5
             var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1, false));
+#else
+            var className = StackTraceUsageUtils.GetClassFullName();       
 #endif
             return GetLogger(className);
         }
@@ -413,14 +456,12 @@ namespace NLog
         /// <remarks>This is a slow-running method. 
         /// Make sure you're not doing this in a loop.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public T GetCurrentClassLogger<T>() where T : Logger
+        public T GetCurrentClassLogger<T>() where T : Logger, new()
         {
-#if NETSTANDARD1_0
-            var className = StackTraceUsageUtils.GetClassFullName();
-#elif SILVERLIGHT
-            var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1));
-#else
+#if !NETSTANDARD1_3 && !NETSTANDARD1_5
             var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1, false));
+#else
+            var className = StackTraceUsageUtils.GetClassFullName();            
 #endif
             return (T)GetLogger(className, typeof(T));
         }
@@ -437,12 +478,10 @@ namespace NLog
         [MethodImpl(MethodImplOptions.NoInlining)]
         public Logger GetCurrentClassLogger(Type loggerType)
         {
-#if NETSTANDARD1_0
-            var className = StackTraceUsageUtils.GetClassFullName();
-#elif SILVERLIGHT
-            var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1));
-#else
+#if !NETSTANDARD1_3 && !NETSTANDARD1_5
             var className = StackTraceUsageUtils.GetClassFullName(new StackFrame(1, false));
+#else
+            var className = StackTraceUsageUtils.GetClassFullName();            
 #endif
             return GetLoggerThreadSafe(className, loggerType);
         }
@@ -467,7 +506,7 @@ namespace NLog
         /// <typeparam name="T">Type of the logger</typeparam>
         /// <returns>The logger reference with type <typeparamref name="T"/>. Multiple calls to <c>GetLogger</c> with the same argument 
         /// are not guaranteed to return the same logger reference.</returns>
-        public T GetLogger<T>(string name) where T : Logger
+        public T GetLogger<T>(string name) where T : Logger, new()
         {
             return (T)GetLoggerThreadSafe(name, typeof(T));
         }
@@ -707,38 +746,6 @@ namespace NLog
         /// <remarks>
         /// Logging is enabled if the number of <see cref="ResumeLogging"/> calls is greater than 
         /// or equal to <see cref="SuspendLogging"/> calls.
-        /// 
-        /// This method was marked as obsolete on NLog 4.0 and it may be removed in a future release.
-        /// </remarks>
-        /// <returns>An object that implements IDisposable whose Dispose() method re-enables logging. 
-        /// To be used with C# <c>using ()</c> statement.</returns>
-        [Obsolete("Use SuspendLogging() instead. Marked obsolete on NLog 4.0")]
-        public IDisposable DisableLogging()
-        {
-            return SuspendLogging();
-        }
-
-        /// <summary>
-        /// Increases the log enable counter and if it reaches 0 the logs are disabled.
-        /// </summary>
-        /// <remarks>
-        /// Logging is enabled if the number of <see cref="ResumeLogging"/> calls is greater than 
-        /// or equal to <see cref="SuspendLogging"/> calls.
-        /// 
-        /// This method was marked as obsolete on NLog 4.0 and it may be removed in a future release.
-        /// </remarks>
-        [Obsolete("Use ResumeLogging() instead. Marked obsolete on NLog 4.0")]
-        public void EnableLogging()
-        {
-            ResumeLogging();
-        }
-
-        /// <summary>
-        /// Decreases the log enable counter and if it reaches -1 the logs are disabled.
-        /// </summary>
-        /// <remarks>
-        /// Logging is enabled if the number of <see cref="ResumeLogging"/> calls is greater than 
-        /// or equal to <see cref="SuspendLogging"/> calls.
         /// </remarks>
         /// <returns>An object that implements IDisposable whose Dispose() method re-enables logging. 
         /// To be used with C# <c>using ()</c> statement.</returns>
@@ -794,7 +801,7 @@ namespace NLog
             ConfigurationChanged?.Invoke(this, e);
         }
 
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+#if !NETSTANDARD1_3
         /// <summary>
         /// Raises the event when the configuration is reloaded. 
         /// </summary>
@@ -833,7 +840,7 @@ namespace NLog
                     foreach (Target target in rule.GetTargetsThreadSafe())
                     {
                         targetsFound = true;
-                        var awf = new TargetWithFilterChain(target, rule.Filters, rule.DefaultFilterResult);
+                        var awf = new TargetWithFilterChain(target, rule.Filters, rule.FilterDefaultAction);
                         if (lastTargetsByLevel[i] != null)
                         {
                             lastTargetsByLevel[i].NextInChain = awf;
@@ -863,7 +870,7 @@ namespace NLog
             return targetsFound;
         }
 
-        internal LoggerConfiguration GetConfigurationForLogger(string name, LoggingConfiguration configuration)
+        internal LoggerConfiguration GetConfigurationForLogger(string loggerName, LoggingConfiguration configuration)
         {
             TargetWithFilterChain[] targetsByLevel = new TargetWithFilterChain[LogLevel.MaxLevel.Ordinal + 1];
             TargetWithFilterChain[] lastTargetsByLevel = new TargetWithFilterChain[LogLevel.MaxLevel.Ordinal + 1];
@@ -874,40 +881,51 @@ namespace NLog
             {
                 //no "System.InvalidOperationException: Collection was modified"
                 var loggingRules = configuration.GetLoggingRulesThreadSafe();
-                targetsFound = GetTargetsByLevelForLogger(name, loggingRules, targetsByLevel, lastTargetsByLevel, suppressedLevels);
+                targetsFound = GetTargetsByLevelForLogger(loggerName, loggingRules, targetsByLevel, lastTargetsByLevel, suppressedLevels);
             }
 
             if (InternalLogger.IsDebugEnabled)
             {
-                if (targetsFound)
-                {
-                    InternalLogger.Debug("Targets for {0} by level:", name);
-                    for (int i = 0; i <= LogLevel.MaxLevel.Ordinal; ++i)
-                    {
-                        StringBuilder sb = new StringBuilder();
-                        sb.AppendFormat(CultureInfo.InvariantCulture, "{0} =>", LogLevel.FromOrdinal(i));
-                        for (TargetWithFilterChain afc = targetsByLevel[i]; afc != null; afc = afc.NextInChain)
-                        {
-                            sb.AppendFormat(CultureInfo.InvariantCulture, " {0}", afc.Target.Name);
-                            if (afc.FilterChain.Count > 0)
-                            {
-                                sb.AppendFormat(CultureInfo.InvariantCulture, " ({0} filters)", afc.FilterChain.Count);
-                            }
-                        }
-
-                        InternalLogger.Debug(sb.ToString());
-                    }
-                }
-                else
-                {
-                    InternalLogger.Debug("Targets not configured for logger: {0}", name);
-                }
+                targetsFound = targetsFound && DumpTargetConfigurationForLogger(loggerName, targetsByLevel);
+                if (!targetsFound)
+                    InternalLogger.Debug("Targets not configured for Logger: {0}", loggerName);
             }
 
-#pragma warning disable 618
-            var exceptionLoggingOldStyle = configuration?.ExceptionLoggingOldStyle == true;
-#pragma warning restore 618
-            return new LoggerConfiguration(targetsByLevel, exceptionLoggingOldStyle);
+            return new LoggerConfiguration(targetsByLevel);
+        }
+
+        private static bool DumpTargetConfigurationForLogger(string loggerName, TargetWithFilterChain[] targetsByLevel)
+        {
+            StringBuilder sb = null;
+            for (int i = 0; i <= LogLevel.MaxLevel.Ordinal; ++i)
+            {
+                if (sb != null)
+                {
+                    sb.Length = 0;
+                    sb.AppendFormat(CultureInfo.InvariantCulture, "Logger {0} [{1}] =>", loggerName, LogLevel.FromOrdinal(i));
+                }
+
+                for (TargetWithFilterChain afc = targetsByLevel[i]; afc != null; afc = afc.NextInChain)
+                {
+                    if (sb == null)
+                    {
+                        InternalLogger.Debug("Targets configured when LogLevel >= {0} for Logger: {1}", LogLevel.FromOrdinal(i), loggerName);
+                        sb = new StringBuilder();
+                        sb.AppendFormat(CultureInfo.InvariantCulture, "Logger {0} [{1}] =>", loggerName, LogLevel.FromOrdinal(i));
+                    }
+
+                    sb.AppendFormat(CultureInfo.InvariantCulture, " {0}", afc.Target.Name);
+                    if (afc.FilterChain.Count > 0)
+                    {
+                        sb.AppendFormat(CultureInfo.InvariantCulture, " ({0} filters)", afc.FilterChain.Count);
+                    }
+                }
+
+                if (sb != null)
+                    InternalLogger.Debug(sb.ToString());
+            }
+
+            return sb != null;
         }
 
         /// <summary>
@@ -924,7 +942,9 @@ namespace NLog
 
             _isDisposing = true;
 
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3
+            _serviceRepository.TypeRegistered -= ServiceRepository_TypeRegistered;
+
+#if !NETSTANDARD1_3
             LoggerShutdown -= OnStopLogging;
             ConfigurationReloaded = null;   // Release event listeners
 #endif
@@ -956,7 +976,7 @@ namespace NLog
             {
                 bool attemptClose = true;
 
-#if !SILVERLIGHT && !__IOS__ && !__ANDROID__ && !NETSTANDARD1_3 && !MONO
+#if !NETSTANDARD1_3 && !MONO
                 if (flushTimeout != TimeSpan.Zero && !PlatformDetector.IsMono && !PlatformDetector.IsUnix)
                 {
                     // MONO (and friends) have a hard time with spinning up flush threads/timers during shutdown
@@ -1139,7 +1159,7 @@ namespace NLog
             }
             else
             {
-                var instance = FactoryHelper.CreateInstance(customLoggerType);
+                var instance = ServiceRepository.GetService(customLoggerType);
                 var newLogger = instance as Logger;
                 if (newLogger == null)
                 {
@@ -1182,12 +1202,8 @@ namespace NLog
             {
                 if (!optional)
                 {
-#if SILVERLIGHT
-                    throw new System.IO.FileNotFoundException($"Failed to load NLog LoggingConfiguration from file {actualConfigFile}");
-#else
                     var message = CreateFileNotFoundMessage(configFile);
                     throw new System.IO.FileNotFoundException(message, actualConfigFile);
-#endif
                 }
                 else
                 {
@@ -1329,7 +1345,7 @@ namespace NLog
         /// <summary>
         /// Enables logging in <see cref="IDisposable.Dispose"/> implementation.
         /// </summary>
-        private class LogEnabler : IDisposable
+        private sealed class LogEnabler : IDisposable
         {
             private readonly LogFactory _factory;
 

@@ -49,13 +49,15 @@ namespace NLog.UnitTests.Targets
     using NLog.Targets;
     using Xunit;
     using Xunit.Extensions;
-    using System.Data.SqlClient;
 
-#if MONO 
+#if MONO
     using Mono.Data.Sqlite;
+    using System.Data.SqlClient;
 #elif NETSTANDARD
+    using Microsoft.Data.SqlClient;
     using Microsoft.Data.Sqlite;
 #else
+    using System.Data.SqlClient;
     using System.Data.SQLite;
 #endif
 
@@ -1259,11 +1261,8 @@ Dispose()
                 };
 
                 dt.Initialize(null);
-#if !NETSTANDARD
+
                 Assert.Equal(typeof(SqlConnection), dt.ConnectionType);
-#else
-                Assert.NotNull(dt.ConnectionType);
-#endif
             }
         }
 
@@ -1620,7 +1619,7 @@ INSERT INTO NLogSqlLiteTestAppNames(Id, Name) VALUES (1, @appName);"">
         [Fact]
         public void SqlServer_NoTargetInstallException()
         {
-            if (IsTravis())
+            if (IsLinux())
             {
                 Console.WriteLine("skipping test SqlServer_NoTargetInstallException because we are running in Travis");
                 return;
@@ -1672,7 +1671,7 @@ INSERT INTO NLogSqlLiteTestAppNames(Id, Name) VALUES (1, @appName);"">
         [Fact]
         public void SqlServer_InstallAndLogMessage()
         {
-            if (IsTravis())
+            if (IsLinux())
             {
                 Console.WriteLine("skipping test SqlServer_InstallAndLogMessage because we are running in Travis");
                 return;
@@ -1817,45 +1816,6 @@ INSERT INTO NLogSqlLiteTestAppNames(Id, Name) VALUES (1, @appName);"">
             Assert.Equal("data source=192.168.0.100;initial catalog=TEST_DB;user id=myUser;password=SecretPassword;multipleactiveresultsets=True;application name=EntityFramework", ((NLog.Layouts.SimpleLayout)databaseTarget.ConnectionString).FixedText);
         }
 #endif
-
-        [Theory]
-        [InlineData("usetransactions='false'", true)]
-        [InlineData("usetransactions='true'", true)]
-        [InlineData("", false)]
-        public void WarningForObsoleteUseTransactions(string property, bool printWarning)
-        {
-            LoggingConfiguration c = XmlLoggingConfiguration.CreateFromXmlString($@"
-            <nlog ThrowExceptions='true' internalLogLevel='Info'>
-                <targets>
-                    <target type='database' {property} name='t1' commandtext='fake sql' connectionstring='somewhere' />
-                </targets>
-                <rules>
-                      <logger name='*' writeTo='t1'>
-                       
-                      </logger>
-                    </rules>
-            </nlog>");
-
-            StringWriter writer1 = new StringWriter()
-            {
-                NewLine = "\n"
-            };
-            InternalLogger.LogWriter = writer1;
-            var t = c.FindTargetByName<DatabaseTarget>("t1");
-            t.Initialize(null);
-            var internalLog = writer1.ToString();
-
-            if (printWarning)
-            {
-                Assert.Contains("obsolete", internalLog, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("usetransactions", internalLog, StringComparison.OrdinalIgnoreCase);
-            }
-            else
-            {
-                Assert.DoesNotContain("obsolete", internalLog, StringComparison.OrdinalIgnoreCase);
-                Assert.DoesNotContain("usetransactions", internalLog, StringComparison.OrdinalIgnoreCase);
-            }
-        }
 
         [Theory]
         [InlineData("localhost", "MyDatabase", "user", "password", "Server=localhost;User id=user;Password=password;Database=MyDatabase")]
@@ -2514,13 +2474,13 @@ INSERT INTO NLogSqlLiteTestAppNames(Id, Name) VALUES (1, @appName);"">
             }
 
             /// <summary>
-            /// AppVeyor connectionstring for SQL 2016, see https://www.appveyor.com/docs/services-databases/
+            /// AppVeyor connectionstring for SQL 2019, see https://www.appveyor.com/docs/services-databases/
             /// </summary>
             private const string AppVeyorConnectionStringMaster =
-                @"Server=(local)\SQL2016;Database=master;User ID=sa;Password=Password12!";
+                @"Server=(local)\SQL2019;Database=master;User ID=sa;Password=Password12!";
 
             private const string AppVeyorConnectionStringNLogTest =
-                @"Server=(local)\SQL2016;Database=NLogTest;User ID=sa;Password=Password12!";
+                @"Server=(local)\SQL2019;Database=NLogTest;User ID=sa;Password=Password12!";
 
             private const string LocalConnectionStringMaster =
                 @"Data Source=(localdb)\MSSQLLocalDB; Database=master; Integrated Security=True;";

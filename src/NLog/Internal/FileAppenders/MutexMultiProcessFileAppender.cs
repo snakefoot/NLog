@@ -31,8 +31,7 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-#if !SILVERLIGHT && !__ANDROID__ && !__IOS__ && !NETSTANDARD1_3
-// Unfortunately, Xamarin Android and Xamarin iOS don't support mutexes (see https://github.com/mono/mono/blob/3a9e18e5405b5772be88bfc45739d6a350560111/mcs/class/corlib/System.Threading/Mutex.cs#L167) so the BaseFileAppender class now throws an exception in the constructor.
+#if !NETSTANDARD1_3
 #define SupportsMutex
 #endif
 
@@ -141,7 +140,7 @@ namespace NLog.Internal.FileAppenders
                 return;
             }
 
-            InternalLogger.Trace("Closing '{0}'", FileName);
+            InternalLogger.Trace("{0}: Closing '{1}'", CreateFileParameters, FileName);
             try
             {
                 _mutex?.Close();
@@ -149,7 +148,7 @@ namespace NLog.Internal.FileAppenders
             catch (Exception ex)
             {
                 // Swallow exception as the mutex now is in final state (abandoned instead of closed)
-                InternalLogger.Warn(ex, "Failed to close mutex: '{0}'", FileName);
+                InternalLogger.Warn(ex, "{0}: Failed to close mutex: '{1}'", CreateFileParameters, FileName);
             }
             finally
             {
@@ -163,7 +162,7 @@ namespace NLog.Internal.FileAppenders
             catch (Exception ex)
             {
                 // Swallow exception as the file-stream now is in final state (broken instead of closed)
-                InternalLogger.Warn(ex, "Failed to close file: '{0}'", FileName);
+                InternalLogger.Warn(ex, "{0}: Failed to close file: '{1}'", CreateFileParameters, FileName);
                 AsyncHelpers.WaitForDelay(TimeSpan.FromMilliseconds(1));    // Artificial delay to avoid hammering a bad file location
             }
             finally

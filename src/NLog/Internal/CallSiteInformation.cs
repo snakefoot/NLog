@@ -67,13 +67,13 @@ namespace NLog.Internal
         /// Sets the details retrieved from the Caller Information Attributes
         /// </summary>
         /// <param name="callerClassName"></param>
-        /// <param name="callerMemberName"></param>
+        /// <param name="callerMethodName"></param>
         /// <param name="callerFilePath"></param>
         /// <param name="callerLineNumber"></param>
-        public void SetCallerInfo(string callerClassName, string callerMemberName, string callerFilePath, int callerLineNumber)
+        public void SetCallerInfo(string callerClassName, string callerMethodName, string callerFilePath, int callerLineNumber)
         {
             CallerClassName = callerClassName;
-            CallerMemberName = callerMemberName;
+            CallerMethodName = callerMethodName;
             CallerFilePath = callerFilePath;
             CallerLineNumber = callerLineNumber;
         }
@@ -132,10 +132,10 @@ namespace NLog.Internal
             return StackTraceUsageUtils.GetStackFrameMethodClassName(method, includeNameSpace, cleanAsyncMoveNext, cleanAnonymousDelegates) ?? string.Empty;
         }
 
-        public string GetCallerMemberName(MethodBase method, bool includeMethodInfo, bool cleanAsyncMoveNext, bool cleanAnonymousDelegates)
+        public string GetCallerMethodName(MethodBase method, bool includeMethodInfo, bool cleanAsyncMoveNext, bool cleanAnonymousDelegates)
         {
-            if (!string.IsNullOrEmpty(CallerMemberName))
-                return CallerMemberName;
+            if (!string.IsNullOrEmpty(CallerMethodName))
+                return CallerMethodName;
 
             method = method ?? GetCallerStackFrameMethod(0);
             if (method == null)
@@ -151,12 +151,8 @@ namespace NLog.Internal
             if (!string.IsNullOrEmpty(CallerFilePath))
                 return CallerFilePath;
 
-#if !SILVERLIGHT
             StackFrame frame = StackTrace?.GetFrame(UserStackFrameNumber + skipFrames);
             return frame?.GetFileName() ?? string.Empty;
-#else
-            return string.Empty;
-#endif
         }
 
         public int GetCallerLineNumber(int skipFrames)
@@ -168,8 +164,8 @@ namespace NLog.Internal
             return frame?.GetFileLineNumber() ?? 0;
         }
 
-        public string CallerClassName { get; private set; }
-        public string CallerMemberName { get; private set; }
+        public string CallerClassName { get; internal set; }
+        public string CallerMethodName { get; private set; }
         public string CallerFilePath { get; private set; }
         public int? CallerLineNumber { get; private set; }
 
@@ -215,7 +211,7 @@ namespace NLog.Internal
         /// <param name="firstUserStackFrame">Starting point for skipping async MoveNext-frames</param>
         private static int SkipToUserStackFrameLegacy(StackFrame[] stackFrames, int firstUserStackFrame)
         {
-#if NET4_5
+#if !NET35 && !NET40
             for (int i = firstUserStackFrame; i < stackFrames.Length; ++i)
             {
                 var stackFrame = stackFrames[i];

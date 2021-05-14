@@ -31,15 +31,14 @@
 // THE POSSIBILITY OF SUCH DAMAGE.
 // 
 
-using JetBrains.Annotations;
-
-#if !SILVERLIGHT && !NETSTANDARD1_0
+#if !NETSTANDARD1_3 && !NETSTANDARD1_5
 
 namespace NLog.Targets
 {
     using System;
     using System.Collections.Generic;
     using System.ComponentModel;
+    using System.Linq;
     using System.Net;
     using System.Net.Mail;
     using System.Text;
@@ -49,11 +48,8 @@ namespace NLog.Targets
     using NLog.Internal;
     using NLog.Layouts;
 
-    // For issue #1351 - These are not available for Android or IOS
-#if !__ANDROID__ && !__IOS__ 
+#if !NETSTANDARD
     using System.Configuration;
-#endif
-#if !__ANDROID__ && !__IOS__&& !NETSTANDARD
     using System.Net.Configuration;
 #endif
 
@@ -90,6 +86,9 @@ namespace NLog.Targets
     /// <code lang="C#" source="examples/targets/Configuration API/Mail/Buffered/Example.cs" />
     /// </example>
     [Target("Mail")]
+    [Target("Email")]
+    [Target("Smtp")]
+    [Target("SmtpClient")]
     public class MailTarget : TargetWithLayoutHeaderAndFooter
     {
         private const string RequiredPropertyIsEmptyFormat = "After the processing of the MailTarget's '{0}' property it appears to be empty. The email message will not be sent.";
@@ -100,9 +99,8 @@ namespace NLog.Targets
         /// Initializes a new instance of the <see cref="MailTarget" /> class.
         /// </summary>
         /// <remarks>
-        /// The default value of the layout is: <code>${longdate}|${level:uppercase=true}|${logger}|${message}</code>
+        /// The default value of the layout is: <code>${longdate}|${level:uppercase=true}|${logger}|${message:withexception=true}</code>
         /// </remarks>
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2214:DoNotCallOverridableMethodsInConstructors", Justification = "This one is safe.")]
         public MailTarget()
         {
             Body = "${message}${newline}";
@@ -113,7 +111,19 @@ namespace NLog.Targets
             Timeout = 10000;
         }
 
-#if !__ANDROID__ && !__IOS__ && !NETSTANDARD
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MailTarget" /> class.
+        /// </summary>
+        /// <remarks>
+        /// The default value of the layout is: <code>${longdate}|${level:uppercase=true}|${logger}|${message:withexception=true}</code>
+        /// </remarks>
+        /// <param name="name">Name of the target.</param>
+        public MailTarget(string name) : this()
+        {
+            Name = name;
+        }
+
+#if !NETSTANDARD
         private SmtpSection _currentailSettings;
 
         /// <summary>
@@ -133,12 +143,11 @@ namespace NLog.Targets
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn(ex, "MailTarget(Name={0}): Reading 'From' from .config failed.", Name);
+                        InternalLogger.Warn(ex, "{0}: Reading 'From' from .config failed.", this);
 
-                        if (ExceptionMustBeRethrown(ex))
-                        {
+                        if (LogManager.ThrowExceptions)
                             throw;
-                        }
+
                         _currentailSettings = new SmtpSection();
                     }
                 }
@@ -150,18 +159,6 @@ namespace NLog.Targets
 #endif
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="MailTarget" /> class.
-        /// </summary>
-        /// <remarks>
-        /// The default value of the layout is: <code>${longdate}|${level:uppercase=true}|${logger}|${message}</code>
-        /// </remarks>
-        /// <param name="name">Name of the target.</param>
-        public MailTarget(string name) : this()
-        {
-            Name = name;
-        }
-
-        /// <summary>
         /// Gets or sets sender's email address (e.g. joe@domain.com).
         /// </summary>
         /// <docgen category='Message Options' order='10' />
@@ -169,7 +166,7 @@ namespace NLog.Targets
         {
             get
             {
-#if !__ANDROID__ && !__IOS__ && !NETSTANDARD
+#if !NETSTANDARD
 
                 // In contrary to other settings, System.Net.Mail.SmtpClient doesn't read the 'From' attribute from the system.net/mailSettings/smtp section in the config file.
                 // Thus, when UseSystemNetMailSettings is enabled we have to read the configuration section of system.net/mailSettings/smtp to initialize the 'From' address.
@@ -311,7 +308,7 @@ namespace NLog.Targets
         /// Gets or sets the priority used for sending mails.
         /// </summary>
         /// <docgen category='Message Options' order='100' />
-        public Layout Priority { get; set; }
+        public Layout<MailPriority> Priority { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether NewLine characters in the body should be replaced with <br/> tags.
@@ -345,30 +342,23 @@ namespace NLog.Targets
         }
 
         /// <summary>
-        /// NOTE! Obsolete, instead override Write(IList{AsyncLogEventInfo} logEvents)
-        /// 
-        /// Writes an array of logging events to the log target. By default it iterates on all
-        /// events and passes them to "Write" method. Inheriting classes can use this method to
-        /// optimize batch writes.
-        /// </summary>
-        /// <param name="logEvents">Logging events to be written out.</param>
-        [Obsolete("Instead override Write(IList<AsyncLogEventInfo> logEvents. Marked obsolete on NLog 4.5")]
-        protected override void Write(AsyncLogEventInfo[] logEvents)
-        {
-            Write((IList<AsyncLogEventInfo>)logEvents);
-        }
-
-        /// <summary>
-        /// Writes log events to the mail target.
+        /// Renders an array logging events.
         /// </summary>
         /// <param name="logEvents">Array of logging events.</param>
         protected override void Write(IList<AsyncLogEventInfo> logEvents)
         {
-            var buckets = logEvents.BucketSort(c => GetSmtpSettingsKey(c.LogEvent));
-            foreach (var bucket in buckets)
+            if (logEvents.Count <= 1)
             {
-                var eventInfos = bucket.Value;
-                ProcessSingleMailMessage(eventInfos);
+                ProcessSingleMailMessage(logEvents);
+            }
+            else
+            {
+                var buckets = logEvents.GroupBy(l => GetSmtpSettingsKey(l.LogEvent));
+                foreach (var bucket in buckets)
+                {
+                    var eventInfos = bucket;
+                    ProcessSingleMailMessage(eventInfos);
+                }
             }
         }
 
@@ -387,17 +377,16 @@ namespace NLog.Targets
         /// Create mail and send with SMTP
         /// </summary>
         /// <param name="events">event printed in the body of the event</param>
-        private void ProcessSingleMailMessage([NotNull] IList<AsyncLogEventInfo> events)
+        private void ProcessSingleMailMessage(IEnumerable<AsyncLogEventInfo> events)
         {
             try
             {
-                if (events.Count == 0)
+                LogEventInfo firstEvent = events.FirstOrDefault().LogEvent;
+                LogEventInfo lastEvent = events.LastOrDefault().LogEvent;
+                if (firstEvent == null || lastEvent == null)
                 {
                     throw new NLogRuntimeException("We need at least one event.");
                 }
-
-                LogEventInfo firstEvent = events[0].LogEvent;
-                LogEventInfo lastEvent = events[events.Count - 1].LogEvent;
 
                 // unbuffered case, create a local buffer, append header, body and footer
                 var bodyBuffer = CreateBodyBuffer(events, firstEvent, lastEvent);
@@ -412,12 +401,12 @@ namespace NLog.Targets
                         }
 
                         if (client.EnableSsl)
-                            InternalLogger.Debug("MailTarget(Name={0}): Sending mail to {1} using {2}:{3} (ssl=true)", Name, msg.To, client.Host, client.Port);
+                            InternalLogger.Debug("{0}: Sending mail to {1} using {2}:{3} (ssl=true)", this, msg.To, client.Host, client.Port);
                         else
-                            InternalLogger.Debug("MailTarget(Name={0}): Sending mail to {1} using {2}:{3} (ssl=false)", Name, msg.To, client.Host, client.Port);
+                            InternalLogger.Debug("{0}: Sending mail to {1} using {2}:{3} (ssl=false)", this, msg.To, client.Host, client.Port);
 
-                        InternalLogger.Trace("MailTarget(Name={0}):   Subject: '{1}'", Name, msg.Subject);
-                        InternalLogger.Trace("MailTarget(Name={0}):   From: '{1}'", Name, msg.From.ToString());
+                        InternalLogger.Trace("{0}:   Subject: '{1}'", this, msg.Subject);
+                        InternalLogger.Trace("{0}:   From: '{1}'", this, msg.From);
 
                         client.Send(msg);
 
@@ -431,12 +420,10 @@ namespace NLog.Targets
             catch (Exception exception)
             {
                 //always log
-                InternalLogger.Error(exception, "MailTarget(Name={0}): Error sending mail.", Name);
+                InternalLogger.Error(exception, "{0}: Error sending mail.", this);
 
-                if (ExceptionMustBeRethrown(exception))
-                {
+                if (LogManager.ThrowExceptions)
                     throw;
-                }
 
                 foreach (var ev in events)
                 {
@@ -523,7 +510,7 @@ namespace NLog.Targets
 
                 if (SmtpAuthentication == SmtpAuthenticationMode.Ntlm)
                 {
-                    InternalLogger.Trace("MailTarget(Name={0}):   Using NTLM authentication.", Name);
+                    InternalLogger.Trace("{0}:   Using NTLM authentication.", this);
                     client.Credentials = CredentialCache.DefaultNetworkCredentials;
                 }
                 else if (SmtpAuthentication == SmtpAuthenticationMode.Basic)
@@ -531,7 +518,7 @@ namespace NLog.Targets
                     string username = SmtpUserName.Render(lastEvent);
                     string password = SmtpPassword.Render(lastEvent);
 
-                    InternalLogger.Trace("MailTarget(Name={0}):   Using basic authentication: Username='{1}' Password='{2}'", Name, username, new string('*', password.Length));
+                    InternalLogger.Trace("{0}:   Using basic authentication: Username='{1}' Password='{2}'", this, username, new string('*', password.Length));
                     client.Credentials = new NetworkCredential(username, password);
                 }
             }
@@ -617,8 +604,6 @@ namespace NLog.Targets
                 sb.Append(layout.Render(logEvent));
         }
 
-
-
         /// <summary>
         /// Create the mail message with the addresses, properties and body.
         /// </summary>
@@ -649,25 +634,12 @@ namespace NLog.Targets
 
             if (Priority != null)
             {
-                var renderedPriority = Priority.Render(lastEvent);
-
-                if (string.IsNullOrEmpty(renderedPriority))
-                {
-                    msg.Priority = MailPriority.Normal;
-                }
-                else if (ConversionHelpers.TryParseEnum(renderedPriority, out MailPriority mailPriority))
-                {
-                    msg.Priority = mailPriority;
-                }
-                else
-                {
-                    msg.Priority = MailPriority.Normal;
-                    InternalLogger.Warn("MailTarget(Name={0}): Could not convert '{1}' to MailPriority, valid values are Low, Normal and High. Using normal priority as fallback.", Name, renderedPriority);
-                }
+                msg.Priority = RenderLogEvent(Priority, lastEvent, MailPriority.Normal);
             }
+
             msg.Body = body;
             if (msg.IsBodyHtml && ReplaceNewlineWithBrTagInHtml && msg.Body != null)
-                msg.Body = msg.Body.Replace(EnvironmentHelper.NewLine, "<br/>");
+                msg.Body = msg.Body.Replace(Environment.NewLine, "<br/>");
             return msg;
         }
 
@@ -683,9 +655,13 @@ namespace NLog.Targets
             var added = false;
             if (layout != null)
             {
-                foreach (string mail in layout.Render(logEvent).SplitAndTrimTokens(';'))
+                foreach (string mail in layout.Render(logEvent).Split(';'))
                 {
-                    mailAddressCollection.Add(mail);
+                    var mailAddress = mail.Trim();
+                    if (string.IsNullOrEmpty(mailAddress))
+                        continue;
+
+                    mailAddressCollection.Add(mailAddress);
                     added = true;
                 }
             }

@@ -46,7 +46,7 @@ namespace NLog.LayoutRenderers.Wrappers
     [AppDomainFixedOutput]
     [ThreadAgnostic]
     [ThreadSafe]
-    public sealed class JsonEncodeLayoutRendererWrapper : WrapperLayoutRendererBuilderBase
+    public sealed class JsonEncodeLayoutRendererWrapper : WrapperLayoutRendererBase
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonEncodeLayoutRendererWrapper" /> class.
@@ -78,10 +78,10 @@ namespace NLog.LayoutRenderers.Wrappers
         /// If not set explicitly then the value of the parent will be used as default.
         /// </remarks>
         /// <docgen category="Transformation Options" order="10"/>
-        [DefaultValue(true)] // TODO NLog 5 change to nullable (with default fallback to false)
+        [DefaultValue(false)]
         public bool EscapeForwardSlash
         {
-            get => EscapeForwardSlashInternal ?? true;
+            get => EscapeForwardSlashInternal ?? false;
             set => EscapeForwardSlashInternal = value;
         }
         internal bool? EscapeForwardSlashInternal;
@@ -99,9 +99,9 @@ namespace NLog.LayoutRenderers.Wrappers
         }
 
         /// <inheritdoc/>
-        [Obsolete("Inherit from WrapperLayoutRendererBase and override RenderInnerAndTransform() instead. Marked obsolete in NLog 4.6")]
-        protected override void TransformFormattedMesssage(StringBuilder target)
+        protected override string Transform(string text)
         {
+            throw new NotSupportedException();
         }
 
         private bool RequiresJsonEncode(StringBuilder target, int startPos = 0)

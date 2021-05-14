@@ -44,7 +44,7 @@ Getting started
 ---
 
   * [.NET Framework](https://github.com/NLog/NLog/wiki/Tutorial)
-  * [ASP.NET Core](https://github.com/NLog/NLog/wiki/Getting-started-with-ASP.NET-Core-2)
+  * [ASP.NET Core](https://github.com/NLog/NLog/wiki/Getting-started-with-ASP.NET-Core-5)
   * [.NET Core Console](https://github.com/NLog/NLog/wiki/Getting-started-with-.NET-Core-2---Console-application)
 
 For the possible options in the config, check the [Options list](https://nlog-project.org/config/)
@@ -89,6 +89,11 @@ As the current NLog team is a small team, we cannot fix every bug or implement e
 If you like to start with a small task, then
 [up-for-grabs](https://github.com/NLog/NLog/issues?utf8=%E2%9C%93&q=is%3Aopen+is%3Aissue+label%3Aup-for-grabs+-label%3A%22almost+ready%22+)  are nice to start with.
 
+Please note, we have a `dev` and `master` branch
+
+- `master` is for pure bug fixes and targets NLog 4.x
+- `dev` targets NLog 5
+
 
 A good way to get started (flow)
 
@@ -98,6 +103,8 @@ A good way to get started (flow)
 1. 'Check out' the code with Git or [GitHub Desktop](https://desktop.github.com/)
 1. Check [contributing.md](.github/CONTRIBUTING.md#sync-projects)
 1. Push commits and create a Pull Request (PR) to NLog
+
+Please note: bugfixes should target the **master** branch, others the **dev** branch (NLog 5)
 
 
 License
@@ -112,8 +119,7 @@ Use Visual Studio 2017 and open the solution 'NLog.sln' - C# 7.2 support is requ
 
 For building in the cloud we use:
 - AppVeyor for Windows builds, including Silverlight and Xamarin.
-- Travis for Mono builds.
-- CodeCov for code coverage
+- SonarQube for code coverage
 
 Trying to build your fork in the cloud? Check [this how-to](howto-build-your-fork.md)
 
