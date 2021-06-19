@@ -33,7 +33,9 @@
 
 namespace NLog.Layouts
 {
+    using System;
     using System.ComponentModel;
+    using System.Text;
     using NLog.Config;
     using NLog.Internal;
 
@@ -41,7 +43,7 @@ namespace NLog.Layouts
     /// XML attribute.
     /// </summary>
     [NLogConfigurationItem]
-    public class XmlAttribute
+    public class XmlAttribute : ValueTypeLayoutInfo
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="XmlAttribute" /> class.
@@ -66,8 +68,6 @@ namespace NLog.Layouts
             Name = name;
             Layout = layout;
             Encode = encode;
-            IncludeEmptyValue = false;
-            LayoutWrapper.XmlEncodeNewlines = true;
         }
 
         /// <summary>
@@ -83,29 +83,78 @@ namespace NLog.Layouts
         /// </summary>
         /// <docgen category='XML Attribute Options' order='10' />
         [RequiredParameter]
-        public Layout Layout
-        {
-            get => LayoutWrapper.Inner;
-            set => LayoutWrapper.Inner = value;
-        }
+        public new Layout Layout { get => base.Layout; set => base.Layout = value; }
+
+        /// <summary>
+        /// Gets or sets the result value type, for conversion of layout rendering output
+        /// </summary>
+        public new Type ValueType { get => base.ValueType; set => base.ValueType = value; }
 
         /// <summary>
         /// Determines whether or not this attribute will be Xml encoded.
         /// </summary>
         /// <docgen category='XML Attribute Options' order='100' />
         [DefaultValue(true)]
-        public bool Encode
-        {
-            get => LayoutWrapper.XmlEncode;
-            set => LayoutWrapper.XmlEncode = value;
-        }
+        public bool Encode { get; set; }
 
         /// <summary>
         /// Gets or sets whether an attribute with empty value should be included in the output
         /// </summary>
         /// <docgen category='XML Attribute Options' order='100' />
-        public bool IncludeEmptyValue { get; set; }
+        [DefaultValue(false)]
+        public bool IncludeEmptyValue
+        {
+            get => _includeEmptyValue;
+            set
+            {
+                _includeEmptyValue = value;
+                if (!value)
+                    DefaultValue = new Layout<string>(null);
+                else if (DefaultValue is Layout<string> typedLayout && typedLayout.IsFixed && typedLayout.FixedValue == null)
+                    DefaultValue = null;
+            }
+        }
+        private bool _includeEmptyValue = false;
 
-        internal readonly LayoutRenderers.Wrappers.XmlEncodeLayoutRendererWrapper LayoutWrapper = new LayoutRenderers.Wrappers.XmlEncodeLayoutRendererWrapper();
+        internal bool RenderAppendXmlValue(LogEventInfo logEvent, StringBuilder builder)
+        {
+            if (ValueType == null)
+            {
+                int orgLength = builder.Length;
+                Layout.RenderAppendBuilder(logEvent, builder);
+                if (!IncludeEmptyValue && builder.Length <= orgLength)
+                {
+                    return false;
+                }
+
+                if (Encode)
+                {
+                    XmlHelper.PerformXmlEscapeWhenNeeded(builder, orgLength, true);
+                }
+            }
+            else
+            {
+                var objectValue = RenderValue(logEvent);
+                if (!IncludeEmptyValue && (objectValue == null || string.Empty.Equals(objectValue)))
+                {
+                    return false;
+                }
+
+                var convertibleValue = objectValue as IConvertible;
+                var objTypeCode = convertibleValue?.GetTypeCode() ?? (objectValue == null ? TypeCode.Empty : TypeCode.Object);
+                if (objTypeCode != TypeCode.Object)
+                {
+                    string xmlValueString = XmlHelper.XmlConvertToString(convertibleValue, objTypeCode, true);
+                    builder.Append(xmlValueString);
+                }
+                else
+                {
+                    string xmlValueString = XmlHelper.XmlConvertToStringSafe(objectValue);
+                    builder.Append(xmlValueString);
+                }
+            }
+
+            return true;
+        }
     }
 }

@@ -33,14 +33,16 @@
 
 namespace NLog.Layouts
 {
+    using System;
     using System.ComponentModel;
+    using System.Text;
     using NLog.Config;
 
     /// <summary>
     /// JSON attribute.
     /// </summary>
     [NLogConfigurationItem]
-    public class JsonAttribute
+    public class JsonAttribute : ValueTypeLayoutInfo
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonAttribute" /> class.
@@ -65,7 +67,6 @@ namespace NLog.Layouts
             Name = name;
             Layout = layout;
             Encode = encode;
-            IncludeEmptyValue = false;
         }
 
         /// <summary>
@@ -97,31 +98,24 @@ namespace NLog.Layouts
         /// </summary>
         /// <docgen category='JSON Attribute Options' order='10' />
         [RequiredParameter]
-        public Layout Layout
-        {
-            get => LayoutWrapper.Inner;
-            set => LayoutWrapper.Inner = value;
-        }
+        public new Layout Layout { get => base.Layout; set => base.Layout = value; }
+
+        /// <summary>
+        /// Gets or sets the result value type, for conversion of layout rendering output
+        /// </summary>
+        public new Type ValueType { get => base.ValueType; set => base.ValueType = value; }
 
         /// <summary>
         /// Determines whether or not this attribute will be Json encoded.
         /// </summary>
         /// <docgen category='JSON Attribute Options' order='100' />
-        public bool Encode
-        {
-            get => LayoutWrapper.JsonEncode;
-            set => LayoutWrapper.JsonEncode = value;
-        }
+        public bool Encode { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether to escape non-ascii characters
         /// </summary>
         /// <docgen category='JSON Attribute Options' order='100' />
-        public bool EscapeUnicode
-        {
-            get => LayoutWrapper.EscapeUnicode;
-            set => LayoutWrapper.EscapeUnicode = value;
-        }
+        public bool EscapeUnicode { get; set; }
 
         /// <summary>
         /// Should forward slashes be escaped? If true, / will be converted to \/
@@ -131,18 +125,63 @@ namespace NLog.Layouts
         /// </remarks>
         /// <docgen category='JSON Attribute Options' order='100' />
         [DefaultValue(false)]
-        public bool EscapeForwardSlash 
-        {
-            get => LayoutWrapper.EscapeForwardSlash;
-            set => LayoutWrapper.EscapeForwardSlash = value;
-        }
+        public bool EscapeForwardSlash { get => EscapeForwardSlashInternal ?? false; set => EscapeForwardSlashInternal = value; }
+        internal bool? EscapeForwardSlashInternal { get; set; }
 
         /// <summary>
         /// Gets or sets whether an attribute with empty value should be included in the output
         /// </summary>
         /// <docgen category='JSON Attribute Options' order='100' />
-        public bool IncludeEmptyValue { get; set; }
+        [DefaultValue(false)]
+        public bool IncludeEmptyValue
+        {
+            get => _includeEmptyValue;
+            set
+            {
+                _includeEmptyValue = value;
+                if (!value)
+                    DefaultValue = new Layout<string>(null);
+                else if (DefaultValue is Layout<string> typedLayout && typedLayout.IsFixed && typedLayout.FixedValue == null)
+                    DefaultValue = null;
+            }
+        }
+        private bool _includeEmptyValue = false;
 
-        internal readonly LayoutRenderers.Wrappers.JsonEncodeLayoutRendererWrapper LayoutWrapper = new LayoutRenderers.Wrappers.JsonEncodeLayoutRendererWrapper();
+        internal bool RenderAppendJsonValue(LogEventInfo logEvent, IJsonConverter jsonConverter, StringBuilder builder)
+        {
+            if (ValueType == null)
+            {
+                if (Encode)
+                {
+                    // "\"{0}\":{1}\"{2}\""
+                    builder.Append('"');
+                }
+
+                int orgLength = builder.Length;
+                Layout.RenderAppendBuilder(logEvent, builder);
+                if (!IncludeEmptyValue && builder.Length <= orgLength)
+                {
+                    return false;
+                }
+
+                if (Encode)
+                {
+                    Targets.DefaultJsonSerializer.PerformJsonEscapeWhenNeeded(builder, orgLength, EscapeUnicode, EscapeForwardSlash);
+                    builder.Append('"');
+                }
+            }
+            else
+            {
+                var objectValue = RenderValue(logEvent);
+                if (!IncludeEmptyValue && (objectValue == null || string.Empty.Equals(objectValue)))
+                {
+                    return false;
+                }
+
+                jsonConverter.SerializeObject(objectValue, builder);
+            }
+
+            return true;
+        }
     }
 }

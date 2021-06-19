@@ -35,9 +35,8 @@ using System;
 using System.Globalization;
 using System.Reflection;
 using NLog.Config;
-using NLog.Layouts;
 
-namespace NLog.Common
+namespace NLog.Layouts
 {
     /// <summary>
     /// Typed Value that is easily configured from NLog.config file
