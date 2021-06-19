@@ -28,14 +28,7 @@ For ASP.NET Core, check: https://www.nuget.org/packages/NLog.Web.AspNetCore
     <Copyright>Copyright (c) 2004-$(CurrentYear) NLog Project - https://nlog-project.org/ </Copyright>
 
     <PackageReleaseNotes>
-## Bugfixes
-- JsonSerializer - Fixed bug when handling custom IConvertible returning TypeCode.Empty (#4401) (@snakefoot)
-
-## Improvements
-- Support TargetDefaultParameters and TargetDefaultWrapper (#4391) (@snakefoot)
-- JsonLayout - Apply EscapeForwardSlash for LogEventInfo.Properties (#4403) (@snakefoot)
-      
-Full changelog: https://github.com/NLog/NLog/blob/master/CHANGELOG.md
+NLog 5.0 prerelease version 1.
 
 For all config options and platform support, check https://nlog-project.org/config/
     </PackageReleaseNotes>
@@ -47,7 +40,7 @@ For all config options and platform support, check https://nlog-project.org/conf
     <RepositoryUrl>https://github.com/NLog/NLog.git</RepositoryUrl>
 
     <SignAssembly>true</SignAssembly>
-    <AssemblyVersion>4.0.0.0</AssemblyVersion>
+    <AssemblyVersion>5.0.0.0</AssemblyVersion>
     <AssemblyOriginatorKeyFile>..\NLog.snk</AssemblyOriginatorKeyFile>
     <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
 
