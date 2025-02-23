@@ -40,7 +40,6 @@ namespace NLog
     using System.Diagnostics;
     using System.Linq;
     using System.Text;
-    using System.Xml;
     using NLog.Internal;
 
     /// <summary>
@@ -577,7 +576,7 @@ namespace NLog
                             break;
 
                         case "AUTOLOGGERNAME":
-                            AutoLoggerName = XmlConvert.ToBoolean(value);
+                            AutoLoggerName = bool.Parse(value);
                             break;
 
                         case "DISABLEFLUSH":
