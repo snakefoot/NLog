@@ -563,7 +563,7 @@ namespace NLog
                 foreach (DictionaryEntry de in Attributes)
                 {
                     var key = (string)de.Key;
-                    var value = (string)de.Value;
+                    var value = ((string)de.Value)?.Trim();
 
                     switch (key.ToUpperInvariant())
                     {
@@ -576,11 +576,11 @@ namespace NLog
                             break;
 
                         case "AUTOLOGGERNAME":
-                            AutoLoggerName = bool.Parse(value);
+                            AutoLoggerName = value?.Length == 1 ? value[0] == '1' : bool.Parse(value);
                             break;
 
                         case "DISABLEFLUSH":
-                            DisableFlush = bool.Parse(value);
+                            DisableFlush = value?.Length == 1 ? value[0] == '1' : bool.Parse(value);
                             break;
                     }
                 }
