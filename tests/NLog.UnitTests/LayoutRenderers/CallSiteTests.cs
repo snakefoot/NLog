@@ -379,7 +379,7 @@ namespace NLog.UnitTests.LayoutRenderers
         {
             var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
                 <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=false:CleanNamesOfAnonymousDelegates=true}' /></targets>
+                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=false}' /></targets>
                     <rules>
                         <logger name='*' levels='Fatal' writeTo='debug' />
                     </rules>
@@ -408,45 +408,11 @@ namespace NLog.UnitTests.LayoutRenderers
         }
 
         [Fact]
-        public void DontCleanMethodNamesOfAnonymousDelegatesTest()
-        {
-            var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
-                <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=false:CleanNamesOfAnonymousDelegates=false}' /></targets>
-                    <rules>
-                        <logger name='*' levels='Fatal' writeTo='debug' />
-                    </rules>
-                </nlog>").LogFactory;
-
-            var logger = logFactory.GetLogger("A");
-
-            bool done = false;
-            ThreadPool.QueueUserWorkItem(
-                state =>
-                {
-                    logger.Fatal("message");
-                    done = true;
-                },
-                null);
-
-            while (done == false)
-            {
-                Thread.Sleep(10);
-            }
-
-            if (done == true)
-            {
-                string lastMessage = GetDebugLastMessage("debug", logFactory);
-                Assert.StartsWith("<DontCleanMethodNamesOfAnonymousDelegatesTest>", lastMessage);
-            }
-        }
-
-        [Fact]
         public void CleanClassNamesOfAnonymousDelegatesTest()
         {
             var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
                 <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=true:MethodName=false:CleanNamesOfAnonymousDelegates=true}' /></targets>
+                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=true:MethodName=false}' /></targets>
                     <rules>
                         <logger name='*' levels='Fatal' writeTo='debug' />
                     </rules>
@@ -475,44 +441,11 @@ namespace NLog.UnitTests.LayoutRenderers
         }
 
         [Fact]
-        public void DontCleanClassNamesOfAnonymousDelegatesTest()
-        {
-            var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
-                <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=true:MethodName=false:CleanNamesOfAnonymousDelegates=false}' /></targets>
-                    <rules>
-                        <logger name='*' levels='Fatal' writeTo='debug' />
-                    </rules>
-                </nlog>").LogFactory;
-
-            var logger = logFactory.GetLogger("A");
-
-            bool done = false;
-            ThreadPool.QueueUserWorkItem(
-                state =>
-                {
-                    logger.Fatal("message");
-                    done = true;
-                },
-                null);
-
-            while (done == false)
-            {
-                Thread.Sleep(10);
-            }
-
-            if (done == true)
-            {
-                logFactory.AssertDebugLastMessageContains("+<>");
-            }
-        }
-
-        [Fact]
         public void When_NotIncludeNameSpace_Then_CleanAnonymousDelegateClassNameShouldReturnParentClassName()
         {
             var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
                 <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=true:MethodName=false:IncludeNamespace=false:CleanNamesOfAnonymousDelegates=true}' /></targets>
+                    <targets><target name='debug' type='Debug' layout='${callsite:ClassName=true:MethodName=false:IncludeNamespace=false}' /></targets>
                     <rules>
                         <logger name='*' levels='Fatal' writeTo='debug' />
                     </rules>
@@ -1232,7 +1165,7 @@ namespace NLog.UnitTests.LayoutRenderers
 
             var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
                 <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:classname=false:cleannamesofasynccontinuations=true}' /></targets>
+                    <targets><target name='debug' type='Debug' layout='${callsite:classname=false}' /></targets>
                     <rules>
                         <logger name='*' levels='Debug' writeTo='debug' />
                     </rules>
@@ -1262,7 +1195,7 @@ namespace NLog.UnitTests.LayoutRenderers
 
             var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
                 <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:classname=true:includenamespace=true:cleannamesofasynccontinuations=true:cleanNamesOfAnonymousDelegates=true}' /></targets>
+                    <targets><target name='debug' type='Debug' layout='${callsite:classname=true:includenamespace=true}' /></targets>
                     <rules>
                         <logger name='*' levels='Debug' writeTo='debug' />
                     </rules>
@@ -1282,34 +1215,6 @@ namespace NLog.UnitTests.LayoutRenderers
 
             new InnerClassAsyncMethod6().AsyncMethod6b(logFactory);
             logFactory.AssertDebugLastMessage($"{typeof(InnerClassAsyncMethod6).ToString()}.AsyncMethod6b");
-        }
-
-#if NET35
-        [Fact(Skip = "NET35 not supporting async callstack")]
-#elif MONO
-        [Fact(Skip = "Not working under MONO - not sure if unit test is wrong, or the code")]
-#else
-        [Fact]
-#endif
-        public void LogAfterTaskRunAwait_CleanNamesOfAsyncContinuationsIsFalse_ShouldNotCleanNames()
-        {
-            var logFactory = new LogFactory().Setup().LoadConfigurationFromXml(@"
-                <nlog>
-                    <targets><target name='debug' type='Debug' layout='${callsite:includenamespace=true:cleannamesofasynccontinuations=false}' /></targets>
-                    <rules>
-                        <logger name='*' levels='Debug' writeTo='debug' />
-                    </rules>
-                </nlog>").LogFactory;
-
-            Task.Run(async () =>
-            {
-                await AMinimalAsyncMethod();
-                var logger = logFactory.GetCurrentClassLogger();
-                logger.Debug("dude");
-            }).Wait();
-
-            logFactory.AssertDebugLastMessageContains("NLog.UnitTests.LayoutRenderers.CallSiteTests");
-            logFactory.AssertDebugLastMessageContains("MoveNext");
         }
 
         private class InnerClassAsyncMethod6
